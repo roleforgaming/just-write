@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { App, TFile } from 'obsidian';
+import { ProjectManager } from '../utils/projectManager';
 
 interface InspectorProps {
     app: App;
@@ -10,7 +11,11 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
     const [synopsis, setSynopsis] = React.useState('');
     const [status, setStatus] = React.useState('Draft');
     const [label, setLabel] = React.useState('Chapter');
-    const [notes, setNotes] = React.useState(''); // New State
+    const [notes, setNotes] = React.useState('');
+
+    // Check Read-Only Status
+    const pm = new ProjectManager(app);
+    const isReadOnly = pm.isInTrash(file);
 
     React.useEffect(() => {
         const cache = app.metadataCache.getFileCache(file);
@@ -19,10 +24,11 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
         setSynopsis(frontmatter?.synopsis || '');
         setStatus(frontmatter?.status || 'Draft');
         setLabel(frontmatter?.label || 'Chapter');
-        setNotes(frontmatter?.notes || ''); // Load Notes
+        setNotes(frontmatter?.notes || '');
     }, [file, app.metadataCache]);
 
     const handleSave = async (key: string, value: string) => {
+        if (isReadOnly) return; // Prevent save
         await app.fileManager.processFrontMatter(file, (fm: any) => {
             fm[key] = value;
         });
@@ -30,7 +36,10 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
 
     return (
         <div className="novelist-inspector-container">
-            <h3 className="novelist-inspector-title">{file.basename}</h3>
+            <h3 className="novelist-inspector-title">
+                {file.basename} 
+                {isReadOnly && <span style={{fontSize: '0.6em', color: 'var(--text-error)', marginLeft: 5}}> [READ-ONLY]</span>}
+            </h3>
             
             {/* Synopsis */}
             <div className="novelist-group">
@@ -39,6 +48,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
                     className="novelist-textarea"
                     rows={6}
                     value={synopsis}
+                    disabled={isReadOnly}
                     onChange={(e) => setSynopsis(e.target.value)}
                     onBlur={(e) => handleSave('synopsis', e.target.value)}
                 />
@@ -50,6 +60,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
                 <select 
                     className="novelist-input"
                     value={status}
+                    disabled={isReadOnly}
                     onChange={(e) => {
                         setStatus(e.target.value);
                         handleSave('status', e.target.value);
@@ -62,11 +73,13 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
                 </select>
             </div>
             
-            <div className="novelist-group">
+            {/* ... Label and Notes fields similarly updated with disabled={isReadOnly} ... */}
+             <div className="novelist-group">
                 <div className="novelist-label-header">Label</div>
                 <select 
                     className="novelist-input"
                     value={label}
+                    disabled={isReadOnly}
                     onChange={(e) => {
                         setLabel(e.target.value);
                         handleSave('label', e.target.value);
@@ -84,8 +97,9 @@ export const Inspector: React.FC<InspectorProps> = ({ app, file }) => {
                 <div className="novelist-label-header">Document Notes</div>
                 <textarea 
                     className="novelist-textarea"
-                    rows={8} // Taller area for notes
+                    rows={8}
                     value={notes}
+                    disabled={isReadOnly}
                     placeholder="Internal scratchpad..."
                     onChange={(e) => setNotes(e.target.value)}
                     onBlur={(e) => handleSave('notes', e.target.value)}

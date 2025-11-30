@@ -5,15 +5,16 @@ import { App, TFile } from 'obsidian';
 import { getMetadata, NovelistMetadata } from '../../utils/metadata';
 import { CardToolbar } from './CardToolbar';
 import * as Lucide from 'lucide-react';
-import { Move } from 'lucide-react'; // Import the Move icon
+import { Move } from 'lucide-react';
 
 interface CardProps {
     file: TFile;
     app: App;
     size: 'small' | 'medium' | 'large';
+    readOnly?: boolean;
 }
 
-export const Card: React.FC<CardProps> = ({ file, app, size }) => {
+export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false }) => {
     const [meta, setMeta] = useState<NovelistMetadata>(getMetadata(app, file));
     const [title, setTitle] = useState(file.basename);
 
@@ -24,12 +25,12 @@ export const Card: React.FC<CardProps> = ({ file, app, size }) => {
         transform,
         transition,
         isDragging
-    } = useSortable({ id: file.path });
+    } = useSortable({ id: file.path, disabled: readOnly });
 
     const style: React.CSSProperties = {
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.6 : 1,
+        opacity: isDragging ? 0.6 : (readOnly ? 0.8 : 1),
         zIndex: isDragging ? 999 : 1,
         position: 'relative',
     };
@@ -44,29 +45,18 @@ export const Card: React.FC<CardProps> = ({ file, app, size }) => {
 
     useEffect(() => {
         refresh();
-        const eventRef = app.metadataCache.on('changed', (changedFile) => {
-            if (changedFile.path === file.path) {
-                refresh();
-            }
-        });
-        
-        const renameRef = app.vault.on('rename', (renamedFile) => {
+        const eventRef = app.metadataCache.on('changed', (changedFile) => { if (changedFile.path === file.path) refresh(); });
+        const renameRef = app.vault.on('rename', (renamedFile) => { 
             if (renamedFile.path === file.path) {
-                 if (renamedFile instanceof TFile) {
-                     setTitle(renamedFile.basename);
-                 } else {
-                     setTitle(renamedFile.name);
-                 }
+                 if (renamedFile instanceof TFile) setTitle(renamedFile.basename);
+                 else setTitle(renamedFile.name);
             }
         });
-
-        return () => { 
-            app.metadataCache.offref(eventRef); 
-            app.vault.offref(renameRef);
-        };
+        return () => { app.metadataCache.offref(eventRef); app.vault.offref(renameRef); };
     }, [file]);
 
     const handleRename = async () => {
+        if (readOnly) return;
         if (!title || title.trim() === "" || title === file.basename) {
             setTitle(file.basename);
             return;
@@ -81,21 +71,21 @@ export const Card: React.FC<CardProps> = ({ file, app, size }) => {
     };
 
     const handleSaveSynopsis = async () => {
+        if (readOnly) return;
         await app.fileManager.processFrontMatter(file, (fm: any) => {
             fm.synopsis = meta.synopsis;
         });
     };
 
     const handleOptimisticUpdate = (key: keyof NovelistMetadata, value: any) => {
+        if (readOnly) return;
         setMeta(prev => ({ ...prev, [key]: value }));
     };
 
     // @ts-ignore
     const IconComponent = Lucide[meta.icon.charAt(0).toUpperCase() + meta.icon.slice(1)] || Lucide.FileText;
 
-    const handleSingleClick = (e: React.MouseEvent) => {
-        // Prevent triggering if we clicked a toolbar/input (handled by stopsPropagation usually, but good to be safe)
-        // Trigger custom event for Inspector
+    const handleSingleClick = () => {
         (app.workspace as any).trigger('novelist:select-file', file);
     };
 
@@ -104,23 +94,17 @@ export const Card: React.FC<CardProps> = ({ file, app, size }) => {
             ref={setNodeRef} 
             style={style} 
             className={`novelist-index-card card-size-${size}`}
-            onClick={handleSingleClick}  // <--- Add this
+            onClick={handleSingleClick}
             onDoubleClick={() => app.workspace.getLeaf(false).openFile(file)}
         >
-            {/* Accent Bar */}
             <div className="novelist-card-accent" style={{ backgroundColor: meta.accentColor || '#ccc' }} />
 
-            {/* 1. DEDICATED DRAG HANDLE (Upper Right) */}
-            <div 
-                className="novelist-drag-handle-corner" 
-                {...attributes} 
-                {...listeners}
-                title="Drag to reorder"
-            >
-                <Move size={14} />
-            </div>
+            {!readOnly && (
+                <div className="novelist-drag-handle-corner" {...attributes} {...listeners} title="Drag to reorder">
+                    <Move size={14} />
+                </div>
+            )}
 
-            {/* Header (Title editing only, no drag) */}
             <div className="novelist-card-header">
                 {/* @ts-ignore */}
                 <IconComponent size={16} className="novelist-card-icon" />
@@ -130,29 +114,32 @@ export const Card: React.FC<CardProps> = ({ file, app, size }) => {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     onBlur={handleRename}
+                    disabled={readOnly}
                     onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                    // No specific propagation stopping needed here anymore as parent isn't draggable
                 />
             </div>
 
             <textarea 
                 className="novelist-card-body-input"
                 value={meta.synopsis}
-                placeholder="Write synopsis..."
+                placeholder={readOnly ? "No synopsis" : "Write synopsis..."}
                 onChange={(e) => setMeta({ ...meta, synopsis: e.target.value })}
                 onBlur={handleSaveSynopsis}
+                disabled={readOnly}
                 onMouseDown={(e) => e.stopPropagation()}
             />
             
-            <div className="novelist-card-footer">
-                <CardToolbar 
-                    file={file} 
-                    app={app} 
-                    currentStatus={meta.status} 
-                    currentIcon={meta.icon}
-                    onOptimisticUpdate={handleOptimisticUpdate}
-                />
-            </div>
+            {!readOnly && (
+                <div className="novelist-card-footer">
+                    <CardToolbar 
+                        file={file} 
+                        app={app} 
+                        currentStatus={meta.status} 
+                        currentIcon={meta.icon}
+                        onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                </div>
+            )}
         </div>
     );
 };

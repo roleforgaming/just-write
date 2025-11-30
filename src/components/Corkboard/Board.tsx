@@ -4,7 +4,8 @@ import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { Card } from './Card';
 import { getRank } from '../../utils/metadata';
-import { Plus } from 'lucide-react'; // Import Plus icon
+import { ProjectManager } from '../../utils/projectManager';
+import { Plus } from 'lucide-react';
 
 interface BoardProps {
     app: App;
@@ -14,6 +15,8 @@ interface BoardProps {
 export const Board: React.FC<BoardProps> = ({ app, folder }) => {
     const [files, setFiles] = useState<TFile[]>([]);
     const [cardSize, setCardSize] = useState<'small' | 'medium' | 'large'>('medium');
+    const projectManager = new ProjectManager(app);
+    const isTrash = projectManager.isInTrash(folder) || folder.name === 'Trash';
 
     const refreshFiles = () => {
         const children = folder.children
@@ -25,31 +28,26 @@ export const Board: React.FC<BoardProps> = ({ app, folder }) => {
     useEffect(() => {
         refreshFiles();
         const eventRef = app.metadataCache.on('resolved', refreshFiles);
-        // Also listen for creation to update grid immediately
         const createRef = app.vault.on('create', refreshFiles);
-        
         return () => { 
             app.metadataCache.offref(eventRef);
             app.vault.offref(createRef);
         };
     }, [folder]);
 
-    // --- New Note Logic ---
     const handleAddCard = async () => {
+        if (isTrash) {
+             new Notice("Cannot add cards to Trash.");
+             return;
+        }
         let counter = 1;
         let newName = `Untitled Scene ${counter}`;
-        
-        // Find unique name
         while (app.vault.getAbstractFileByPath(`${folder.path}/${newName}.md`)) {
             counter++;
             newName = `Untitled Scene ${counter}`;
         }
-
-        // Calculate Rank (End of list)
         const highestRank = files.length > 0 ? getRank(app, files[files.length - 1]) : 0;
         const newRank = highestRank + 100;
-
-        // Default Scrivener-like frontmatter
         const content = `---
 rank: ${newRank}
 label: Scene
@@ -60,8 +58,6 @@ notes: ""
 `;
         try {
             await app.vault.create(`${folder.path}/${newName}.md`, content);
-            // The 'create' listener in useEffect will trigger a refresh visually
-            // But we also want to sync the file tree order
             setTimeout(() => triggerExternalCommand("Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on."), 200);
         } catch (err) {
             new Notice("Could not create new card.");
@@ -70,12 +66,12 @@ notes: ""
     };
 
     const handleDragEnd = async (event: DragEndEvent) => {
+        if (isTrash) return;
         const { active, over } = event;
 
         if (over && active.id !== over.id) {
             const oldIndex = files.findIndex((f) => f.path === active.id);
             const newIndex = files.findIndex((f) => f.path === over.id);
-            
             const newOrder = arrayMove(files, oldIndex, newIndex);
             setFiles(newOrder);
 
@@ -84,7 +80,6 @@ notes: ""
                     fm.rank = index * 10;
                 });
             });
-
             await Promise.all(updatePromises);
             triggerExternalCommand("Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.");
         }
@@ -95,19 +90,19 @@ notes: ""
         const commands = app.commands;
         // @ts-ignore
         const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === name);
-        if (foundCommand) {
-            // @ts-ignore
-            commands.executeCommandById(foundCommand.id);
-        }
+        if (foundCommand) commands.executeCommandById(foundCommand.id);
     };
 
     return (
         <div className="novelist-board-wrapper">
-            {/* Toolbar */}
             <div className="novelist-board-toolbar">
-                
-                {/* ADD BUTTON */}
-                <button className="novelist-add-btn" onClick={handleAddCard} title="Add New Card">
+                <button 
+                    className="novelist-add-btn" 
+                    onClick={handleAddCard} 
+                    title="Add New Card"
+                    disabled={isTrash}
+                    style={{ opacity: isTrash ? 0.5 : 1, cursor: isTrash ? 'not-allowed' : 'pointer' }}
+                >
                     <Plus size={16} /> New Card
                 </button>
 
@@ -123,11 +118,10 @@ notes: ""
                     <option value="large">Large Cards</option>
                 </select>
                 <span className="novelist-toolbar-info">
-                    {files.length} Cards
+                    {files.length} Cards {isTrash && "(Read Only)"}
                 </span>
             </div>
 
-            {/* Grid */}
             <div className={`novelist-corkboard-grid size-${cardSize}`}>
                 <DndContext 
                     collisionDetection={closestCenter}
@@ -136,6 +130,7 @@ notes: ""
                     <SortableContext 
                         items={files.map(f => f.path)} 
                         strategy={rectSortingStrategy}
+                        disabled={isTrash}
                     >
                         {files.map((file) => (
                             <Card 
@@ -143,6 +138,7 @@ notes: ""
                                 file={file} 
                                 app={app} 
                                 size={cardSize}
+                                readOnly={isTrash}
                             />
                         ))}
                     </SortableContext>
