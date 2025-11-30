@@ -1,19 +1,9 @@
 // src/utils/projectManager.ts
-import { App, TFolder, TFile, normalizePath, Notice } from 'obsidian';
+import { App, TFolder, TFile, normalizePath, Notice, TAbstractFile } from 'obsidian';
+import { getRank } from './metadata';
 
 export const PROJECT_MARKER_FILE = 'project.md';
 export const PROJECT_TYPE_KEY = 'novelist-project';
-
-export interface NovelistProject {
-    name: string;
-    rootFolder: TFolder;
-    manuscriptFolder: TFolder;
-    structure: {
-        research: TFolder | null;
-        characters: TFolder | null;
-        trash: TFolder | null;
-    }
-}
 
 export class ProjectManager {
     app: App;
@@ -22,9 +12,6 @@ export class ProjectManager {
         this.app = app;
     }
 
-    /**
-     * Checks if a folder is the root of a Novelist project
-     */
     isProject(folder: TFolder): boolean {
         const markerFile = folder.children.find(
             c => c.name === PROJECT_MARKER_FILE && c instanceof TFile
@@ -36,13 +23,13 @@ export class ProjectManager {
         return cache?.frontmatter?.type === PROJECT_TYPE_KEY;
     }
 
-    /**
-     * Finds the project a specific file belongs to (bubbling up)
-     */
-    getProjectForFile(file: TFile): TFolder | null {
-        let current: TFolder | null = file.parent;
+    getProjectForFile(file: TAbstractFile): TFolder | null {
+        let current: TAbstractFile | null = file.parent;
+        // If file is already a root folder, check itself
+        if (file instanceof TFolder && this.isProject(file)) return file;
+
         while (current && !current.isRoot()) {
-            if (this.isProject(current)) {
+            if (current instanceof TFolder && this.isProject(current)) {
                 return current;
             }
             current = current.parent;
@@ -50,48 +37,6 @@ export class ProjectManager {
         return null;
     }
 
-    /**
-     * Creates a new Novelist Project structure
-     */
-    async createProject(projectName: string, parentPath: string = ""): Promise<TFolder | null> {
-        const rootPath = normalizePath(`${parentPath}/${projectName}`);
-        
-        try {
-            // 1. Create Root
-            const rootFolder = await this.app.vault.createFolder(rootPath);
-
-            // 2. Create Marker File
-            const frontmatter = `---
-type: ${PROJECT_TYPE_KEY}
-status: Planning
-author: 
-deadline: 
----
-# ${projectName}
-Project notes and synopsis go here.
-`;
-            await this.app.vault.create(`${rootPath}/${PROJECT_MARKER_FILE}`, frontmatter);
-
-            // 3. Create Subfolders
-            await this.app.vault.createFolder(`${rootPath}/Manuscript`);
-            await this.app.vault.createFolder(`${rootPath}/Research`);
-            await this.app.vault.createFolder(`${rootPath}/Story Bible`);
-            await this.app.vault.createFolder(`${rootPath}/Story Bible/Characters`);
-            await this.app.vault.createFolder(`${rootPath}/Story Bible/Locations`);
-            await this.app.vault.createFolder(`${rootPath}/Trash`);
-
-            new Notice(`Project "${projectName}" created!`);
-            return rootFolder;
-        } catch (error) {
-            new Notice(`Failed to create project: ${error.message}`);
-            console.error(error);
-            return null;
-        }
-    }
-
-    /**
-     * Get all projects in the vault
-     */
     getAllProjects(): TFolder[] {
         const projects: TFolder[] = [];
         const files = this.app.vault.getMarkdownFiles();
@@ -106,5 +51,86 @@ Project notes and synopsis go here.
         });
         
         return projects;
+    }
+
+    // --- NEW METHODS ---
+
+    /**
+     * Finds the specific Trash folder for a given project
+     */
+    getTrashFolder(projectRoot: TFolder): TFolder | null {
+        return projectRoot.children.find(
+            child => child instanceof TFolder && child.name === "Trash"
+        ) as TFolder || null;
+    }
+
+    /**
+     * Safely moves an item to the project's trash folder
+     */
+    async moveToTrash(item: TAbstractFile, projectRoot: TFolder) {
+        const trashFolder = this.getTrashFolder(projectRoot);
+        if (!trashFolder) {
+            new Notice("Project Trash folder not found.");
+            return;
+        }
+
+        if (item.path === trashFolder.path) {
+            new Notice("Cannot move Trash to Trash.");
+            return;
+        }
+
+        // Generate unique name in trash
+        let newName = item.name;
+        let counter = 1;
+        while (this.app.vault.getAbstractFileByPath(`${trashFolder.path}/${newName}`)) {
+            if (item instanceof TFile) {
+                newName = `${item.basename} (${counter}).${item.extension}`;
+            } else {
+                newName = `${item.name} (${counter})`;
+            }
+            counter++;
+        }
+
+        await this.app.fileManager.renameFile(item, `${trashFolder.path}/${newName}`);
+        new Notice(`Moved "${item.name}" to Project Trash.`);
+    }
+
+    /**
+     * Creates a new item (file/folder) inside a target folder
+     */
+    async createNewItem(parentFolder: TFolder, type: 'file' | 'folder', baseName = "Untitled") {
+        let name = baseName;
+        let counter = 1;
+        
+        // Dedup name
+        const extension = type === 'file' ? '.md' : '';
+        while (this.app.vault.getAbstractFileByPath(`${parentFolder.path}/${name}${extension}`)) {
+            name = `${baseName} ${counter}`;
+            counter++;
+        }
+
+        const fullPath = `${parentFolder.path}/${name}${extension}`;
+
+        if (type === 'folder') {
+            await this.app.vault.createFolder(fullPath);
+        } else {
+            // Calculate rank for new file
+            const siblings = parentFolder.children.filter(c => c instanceof TFile && c.extension === 'md');
+            let maxRank = 0;
+            siblings.forEach(s => {
+                const r = getRank(this.app, s as TFile);
+                if (r < 999999 && r > maxRank) maxRank = r;
+            });
+
+            const content = `---
+rank: ${maxRank + 10}
+status: Draft
+label: Scene
+synopsis: ""
+notes: ""
+---
+`;
+            await this.app.vault.create(fullPath, content);
+        }
     }
 }

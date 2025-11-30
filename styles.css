@@ -1,3 +1,53 @@
+/* --- Binder View Enhancements --- */
+
+.novelist-binder-header {
+    padding: 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 5px;
+    background-color: var(--background-secondary);
+}
+
+.novelist-project-selector {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.novelist-project-selector select {
+    flex-grow: 1;
+    background: transparent;
+    border: none;
+    font-weight: bold;
+    color: var(--text-normal);
+    cursor: pointer;
+}
+
+.novelist-binder-actions {
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end; /* Align buttons to right */
+}
+
+.novelist-binder-actions button {
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.novelist-binder-actions button:hover {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
 /* --- 1. Scrivener Palette Variables --- */
 body {
     --scriv-binder-bg: #282c34; /* Dark Blue-Grey */

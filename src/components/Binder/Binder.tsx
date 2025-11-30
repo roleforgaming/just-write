@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { App, TFile, TAbstractFile, TFolder } from 'obsidian';
+import { App, TFile, TAbstractFile, TFolder, Notice } from 'obsidian';
 import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { BinderNode } from './BinderNode';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
-import { Book } from 'lucide-react';
+import { Book, FilePlus, FolderPlus } from 'lucide-react';
 
 interface BinderProps {
     app: App;
@@ -14,10 +14,8 @@ interface BinderProps {
 export const Binder: React.FC<BinderProps> = ({ app }) => {
     const projectManager = new ProjectManager(app);
     
-    // State: Current Active Project (Folder)
     const [currentProject, setCurrentProject] = useState<TFolder | null>(null);
     const [availableProjects, setAvailableProjects] = useState<TFolder[]>([]);
-    
     const [rootChildren, setRootChildren] = useState<TAbstractFile[]>([]);
     const [activeFile, setActiveFile] = useState<TFile | null>(app.workspace.getActiveFile());
     const [fileSystemVersion, setFileSystemVersion] = useState(0);
@@ -26,25 +24,20 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
     );
 
-    // --- Project Detection & Loading ---
-
+    // ... [Previous loadProjects function remains the same]
     const loadProjects = () => {
         const projects = projectManager.getAllProjects();
         setAvailableProjects(projects);
         
-        // Auto-select project if active file belongs to one
         if (activeFile && !currentProject) {
             const parentProject = projectManager.getProjectForFile(activeFile);
             if (parentProject) setCurrentProject(parentProject);
-        }
-        // If no project selected and we have projects, select first
-        else if (!currentProject && projects.length > 0) {
+        } else if (!currentProject && projects.length > 0) {
             setCurrentProject(projects[0]);
         }
     };
 
-    // --- File Sorting ---
-    
+    // ... [Previous sortChildren function remains the same]
     const sortChildren = (children: TAbstractFile[]) => {
         return [...children].sort((a, b) => {
             const aIsFolder = a instanceof TFolder;
@@ -55,7 +48,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             if (!aIsFolder && bIsFolder) return 1;
 
             if (aIsFolder && bIsFolder) {
-                // Fixed Scrivener Order: Manuscript -> Research -> Trash
                 const fixedOrder = ['Manuscript', 'Research', 'Story Bible', 'Trash'];
                 const aIndex = fixedOrder.indexOf(a.name);
                 const bIndex = fixedOrder.indexOf(b.name);
@@ -66,14 +58,11 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 
                 return a.name.localeCompare(b.name);
             }
-
-            // Both are files, sort by rank
             return getRank(app, a as TFile) - getRank(app, b as TFile);
         });
     };
 
     const refresh = () => {
-        // If a project is selected, show its children. Otherwise show nothing or instruction.
         if (currentProject) {
             setRootChildren(sortChildren(currentProject.children));
         } else {
@@ -82,24 +71,18 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         setFileSystemVersion(v => v + 1);
     };
 
-    useEffect(() => {
-        loadProjects();
-    }, []); // On Mount
-
+    // ... [Previous useEffects for listeners remain the same]
+    useEffect(() => { loadProjects(); }, []);
     useEffect(() => {
         refresh();
-        
         const metaRef = app.metadataCache.on('resolved', () => { loadProjects(); refresh(); });
         const cacheRef = app.metadataCache.on('changed', refresh);
         const modifyRef = app.vault.on('modify', refresh);
-        // Important: Create might add a new Project
         const createRef = app.vault.on('create', () => { loadProjects(); refresh(); });
         const deleteRef = app.vault.on('delete', refresh);
         const renameRef = app.vault.on('rename', refresh);
-
         const activeLeafRef = app.workspace.on('file-open', (file) => {
             setActiveFile(file);
-            // Auto-switch binder if user creates/opens file in different project
             if (file) {
                 const proj = projectManager.getProjectForFile(file);
                 if (proj && proj.path !== currentProject?.path) {
@@ -107,7 +90,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 }
             }
         });
-
         return () => {
             app.metadataCache.offref(metaRef);
             app.metadataCache.offref(cacheRef);
@@ -119,50 +101,42 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         };
     }, [app, currentProject]);
 
-    // --- Drag and Drop Logic (Restored) ---
-    
-    const triggerExternalCommand = (name: string) => {
-        // @ts-ignore
-        const commands = app.commands;
-        // @ts-ignore
-        const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === name);
-        if (foundCommand) {
-            // @ts-ignore
-            commands.executeCommandById(foundCommand.id);
+    // --- New Creation Handlers ---
+
+    const handleCreateButton = async (type: 'file' | 'folder') => {
+        if (!currentProject) {
+            new Notice("No project selected.");
+            return;
         }
+
+        // Default to "Manuscript" folder if available, otherwise Project Root
+        const manuscriptFolder = currentProject.children.find(c => c.name === "Manuscript" && c instanceof TFolder) as TFolder;
+        const targetFolder = manuscriptFolder || currentProject;
+
+        await projectManager.createNewItem(targetFolder, type);
     };
 
+    // ... [Previous handleDragEnd remains the same]
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
-
-        // Basic validation
         if (!over || active.id === over.id) return;
 
         const activeFile = app.vault.getAbstractFileByPath(active.id as string);
         const overFile = app.vault.getAbstractFileByPath(over.id as string);
 
         if (!activeFile || !overFile) return;
-
-        // Ensure we are dragging within the same folder (Sibling reordering)
-        if (activeFile.parent?.path !== overFile.parent?.path) {
-            return; 
-        }
+        if (activeFile.parent?.path !== overFile.parent?.path) return;
 
         const parentFolder = activeFile.parent;
         if (!parentFolder) return;
 
-        // Get current sorted order to determine indices
         const siblings = sortChildren(parentFolder.children);
-        
         const oldIndex = siblings.findIndex(x => x.path === activeFile.path);
         const newIndex = siblings.findIndex(x => x.path === overFile.path);
 
         if (oldIndex === -1 || newIndex === -1) return;
 
-        // Create the new array order
         const newOrder = arrayMove(siblings, oldIndex, newIndex);
-
-        // Update Ranks based on new index (0, 10, 20...)
         const updatePromises = newOrder.map((file, index) => {
             if (file instanceof TFile && file.extension === 'md') {
                 return app.fileManager.processFrontMatter(file, (fm) => {
@@ -173,36 +147,40 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         });
 
         await Promise.all(updatePromises);
-        triggerExternalCommand("Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.");
+        // @ts-ignore
+        app.commands.executeCommandById("file-explorer:sort-by-name"); // Trigger generic sort
     };
-
-    // --- Render ---
 
     return (
         <div className="novelist-binder-container">
-            {/* Project Selector Header */}
-            <div className="novelist-project-selector" style={{ 
-                padding: '10px', 
-                borderBottom: '1px solid var(--background-modifier-border)',
-                marginBottom: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-            }}>
-                <Book size={16} />
-                <select 
-                    value={currentProject?.path || ""}
-                    onChange={(e) => {
-                        const proj = availableProjects.find(p => p.path === e.target.value);
-                        setCurrentProject(proj || null);
-                    }}
-                    style={{ flexGrow: 1, background: 'transparent', border: 'none', fontWeight: 'bold' }}
-                >
-                    <option value="" disabled>Select Project...</option>
-                    {availableProjects.map(p => (
-                        <option key={p.path} value={p.path}>{p.name}</option>
-                    ))}
-                </select>
+            {/* Header Area */}
+            <div className="novelist-binder-header">
+                {/* Project Selector */}
+                <div className="novelist-project-selector">
+                    <Book size={16} />
+                    <select 
+                        value={currentProject?.path || ""}
+                        onChange={(e) => {
+                            const proj = availableProjects.find(p => p.path === e.target.value);
+                            setCurrentProject(proj || null);
+                        }}
+                    >
+                        <option value="" disabled>Select Project...</option>
+                        {availableProjects.map(p => (
+                            <option key={p.path} value={p.path}>{p.name}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Creation Buttons */}
+                <div className="novelist-binder-actions">
+                    <button onClick={() => handleCreateButton('file')} title="New Document">
+                        <FilePlus size={16} />
+                    </button>
+                    <button onClick={() => handleCreateButton('folder')} title="New Folder">
+                        <FolderPlus size={16} />
+                    </button>
+                </div>
             </div>
 
             {/* Standard Tree */}
@@ -223,6 +201,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                             depth={0}
                             activeFile={activeFile}
                             version={fileSystemVersion}
+                            currentProject={currentProject} // Pass down project context
                         />
                     ))}
                 </SortableContext>
