@@ -1,0 +1,547 @@
+/* --- 1. Scrivener Palette Variables --- */
+body {
+    --scriv-binder-bg: #282c34; /* Dark Blue-Grey */
+    --scriv-binder-text: #abb2bf;
+    --scriv-editor-bg: #fdfdfd; /* Paper White */
+    --scriv-inspector-bg: #2c313a;
+    --scriv-corkboard-bg: #f0f0f0;
+    --scriv-card-bg: #ffffff;
+    --scriv-accent: #4d78cc;
+}
+
+/* --- 2. The Binder (File Explorer Overrides) --- */
+.nav-folder-children .nav-folder-children {
+    border-left: none !important;
+    padding-left: 20px;
+}
+
+.nav-file-title, .nav-folder-title {
+    height: 28px;
+    line-height: 28px;
+    border-radius: 0;
+}
+
+.nav-file-title.is-active {
+    background-color: var(--scriv-accent);
+    color: white;
+}
+
+/* --- 3. The Inspector (Right Sidebar) --- */
+.workspace-split.mod-right-split {
+    background-color: var(--scriv-inspector-bg);
+}
+
+.novelist-inspector-container {
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.novelist-label-header {
+    font-weight: bold;
+    font-size: 0.8em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.novelist-input, .novelist-textarea {
+    background: #1e2227;
+    border: 1px solid #181a1f;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+    width: 100%;
+    padding: 5px;
+}
+
+/* --- 4. Hide Inline Metadata (Scrivener Style) --- */
+.workspace-leaf-content[data-type="markdown"] .metadata-container {
+    display: none !important;
+}
+
+.markdown-source-view.mod-cm6 .cm-scroller {
+    padding: 30px !important;
+}
+
+/* --- 5. The Corkboard Layout --- */
+.novelist-board-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.novelist-board-toolbar {
+    height: 40px;
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    gap: 10px;
+}
+
+.novelist-size-selector {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 2px 5px;
+}
+
+.novelist-toolbar-info {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+/* Grid Container */
+.novelist-corkboard-grid {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 40px;
+    display: grid;
+    gap: 30px;
+    align-content: start;
+    
+    /* Cork Texture */
+    background-color: #e0d6cc;
+    background-image: 
+        radial-gradient(#c4b5a5 15%, transparent 16%),
+        radial-gradient(#c4b5a5 15%, transparent 16%);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+}
+
+.theme-dark .novelist-corkboard-grid {
+    background-color: #2e2e2e;
+    background-image: 
+        radial-gradient(#3a3a3a 15%, transparent 16%),
+        radial-gradient(#3a3a3a 15%, transparent 16%);
+}
+
+/* Sizing Logic */
+.novelist-corkboard-grid.size-small {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+.novelist-corkboard-grid.size-medium {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.novelist-corkboard-grid.size-large {
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+}
+
+.card-size-small { height: 140px; font-size: 0.85em; }
+.card-size-medium { height: 200px; font-size: 1em; }
+.card-size-large { height: 280px; font-size: 1.1em; }
+
+
+/* --- 6. Card Styles --- */
+.novelist-index-card {
+    background: #fdfbf7; /* Cream */
+    border: 1px solid #dcd6cc;
+    border-radius: 3px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.theme-dark .novelist-index-card {
+    background: #202020;
+    border-color: #333;
+}
+
+.novelist-index-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    z-index: 10;
+}
+
+/* Dragging State */
+.novelist-index-card.is-dragging {
+    opacity: 0.8;
+    cursor: grabbing;
+    transform: scale(1.02) rotate(2deg);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+    z-index: 100;
+}
+
+/* Accent Bar */
+/* Add border radius to top of accent/header */
+.novelist-card-accent {
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+}
+
+/* Drag Handle (/* --- 6. Card Styles --- */
+.novelist-index-card {
+    background: #fdfbf7; /* Cream */
+    border: 1px solid #dcd6cc;
+    border-radius: 4px; /* Increased radius slightly */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    
+    /* Allow dropdowns to overflow */
+    overflow: visible; 
+    
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.theme-dark .novelist-index-card {
+    background: #202020;
+    border-color: #333;
+}
+
+.novelist-index-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    z-index: 10;
+}
+
+/* Dragging State */
+.novelist-index-card.is-dragging {
+    opacity: 0.8;
+    cursor: grabbing;
+    transform: scale(1.02) rotate(2deg);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+    z-index: 100;
+}
+
+/* Accent Bar */
+.novelist-card-accent {
+    height: 6px; /* Explicit height */
+    width: 100%;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    
+    /* Ensure it respects the card's rounded corners at the top */
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    
+    /* Fallback color if JS fails */
+    background-color: #ccc; 
+}
+
+/* Drag Handle (Top Right) */
+.novelist-drag-handle-corner {
+    position: absolute;
+    top: 10px; /* Push down below accent bar */
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    
+    background-color: rgba(255, 255, 255, 0.9);
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    color: #999;
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    
+    cursor: grab; 
+    transition: all 0.1s ease;
+}
+
+.novelist-drag-handle-corner:hover {
+    background-color: #fff;
+    border-color: #999;
+    color: #333;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.novelist-drag-handle-corner:active {
+    cursor: grabbing;
+}
+
+.theme-dark .novelist-drag-handle-corner {
+    background-color: rgba(50, 50, 50, 0.8);
+    border-color: #555;
+    color: #aaa;
+}
+
+/* Header */
+.novelist-card-header {
+    padding: 8px 12px;
+    padding-right: 36px; /* Space for drag handle */
+    border-bottom: 1px dashed #dcd6cc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: default;
+}
+
+.theme-dark .novelist-card-header {
+    border-bottom-color: #444;
+}
+
+.novelist-card-icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.novelist-card-title-input {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 2px 0;
+    margin: 0;
+    font-weight: 700;
+    font-size: 1.1em;
+    color: var(--text-normal);
+    outline: none;
+    cursor: text;
+}
+
+.novelist-card-title-input:focus {
+    border-bottom: 1px solid var(--interactive-accent);
+}
+
+/* Body */
+.novelist-card-body-input {
+    flex-grow: 1;
+    border: none;
+    background: transparent;
+    padding: 12px;
+    resize: none;
+    font-family: "Georgia", "Times New Roman", serif;
+    line-height: 1.4;
+    font-size: 0.95em;
+    color: var(--text-normal);
+    outline: none;
+}
+
+.novelist-card-body-input::placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Footer Toolbar */
+.novelist-card-footer {
+    padding: 4px 8px;
+    background: rgba(0,0,0,0.02);
+    border-top: 1px solid rgba(0,0,0,0.05);
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.novelist-card-tools {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.novelist-tool-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 2px 4px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8em;
+}
+
+.novelist-tool-btn:hover {
+    background: rgba(0,0,0,0.05);
+    color: var(--text-normal);
+}
+
+.novelist-hidden-color-input {
+    visibility: hidden;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.color-picker-label {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+/* --- 7. Dropdown Styling --- */
+.novelist-dropdown-container {
+    position: relative;
+}
+
+.novelist-dropdown-menu {
+    position: absolute;
+    /* Anchor to the bottom of the button so it grows UP */
+    bottom: 100%; 
+    /* Anchor right to align with the right edge of the button */
+    right: 0;
+    left: auto; /* Reset left */
+    
+    min-width: 140px;
+    /* Ensure it sits on top of everything */
+    z-index: 10000;
+    
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    border-radius: 6px;
+    padding: 6px;
+    margin-bottom: 8px; /* Space between button and menu */
+    
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Ensure overflow is visible on the card footer so the menu isn't clipped */
+.novelist-card-footer {
+    overflow: visible !important; 
+    z-index: 20; /* Ensure footer sits above card body if needed */
+}
+
+/* Ensure the card itself allows overflow for the menu (optional, use with caution) */
+/* .novelist-index-card { overflow: visible !important; } */
+/* ^ Enabling this breaks the border-radius clip of the main card content, 
+   so we rely on z-index and footer overflow instead. */
+
+.novelist-dropdown-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-radius: 4px;
+    color: var(--text-normal);
+    transition: background-color 0.1s;
+    white-space: nowrap; /* Prevent wrapping */
+}
+
+.novelist-dropdown-item:hover {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* Icon Grid styling correction */
+.novelist-icon-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    min-width: 120px; /* Ensure grid has width */
+}
+
+.novelist-icon-item {
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 3px;
+    color: var(--text-normal);
+}
+
+.novelist-icon-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* --- Inspector Tweaks --- */
+.novelist-inspector-title {
+    margin-top: 0;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-size: 1.1em;
+    text-align: center;
+}
+
+/* --- Corkboard Toolbar Additions --- */
+.novelist-add-btn {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: opacity 0.2s;
+}
+
+.novelist-add-btn:hover {
+    opacity: 0.9;
+}
+
+.novelist-separator {
+    width: 1px;
+    height: 20px;
+    background-color: var(--background-modifier-border);
+    margin: 0 5px;
+}
+
+/* Highlight the selected card (Optional logic, requires passing 'isSelected' prop) */
+.novelist-index-card:focus-within {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.3);
+}
+
+/* --- Scrivenings Mode --- */
+.scrivenings-container {
+    padding: 40px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.scrivener-section {
+    margin-bottom: 40px;
+}
+
+.scrivener-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 15px;
+    padding-bottom: 5px;
+}
+
+.scrivener-header-row h3 {
+    margin: 0;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.scrivener-header-row button {
+    font-size: 0.8em;
+    background: none;
+    border: none;
+    color: var(--interactive-accent);
+    cursor: pointer;
+}
+
+.scrivenings-editor {
+    width: 100%;
+    min-height: 200px;
+    background: var(--background-primary);
+    border: none;
+    resize: vertical;
+    font-family: var(--font-text);
+    font-size: var(--font-text-size);
+    line-height: var(--line-height-normal);
+    padding: 0;
+    outline: none;
+}
+
+.scrivenings-preview {
+    min-height: 50px;
+}
+
+.scrivener-break {
+    border: none;
+    border-bottom: 2px dotted var(--background-modifier-border);
+    margin-top: 40px;
+    opacity: 0.5;
+}

@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-novelist",
+  "name": "Novelist",
+  "version": "0.0.1",
+  "minAppVersion": "0.12.0",
+  "description": "A writing-focused Obsidian plugin",
+  "author": "You",
+  "main": "dist/main.js",
+  "css": "styles.css"
+}

@@ -1,0 +1,5 @@
+# Ignore dependencies and build output
+node_modules/
+dist/
+.vscode/
+.DS_Store
