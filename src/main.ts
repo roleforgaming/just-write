@@ -2,6 +2,7 @@ import { Plugin, WorkspaceLeaf, TFolder } from 'obsidian';
 import { InspectorView, VIEW_TYPE_INSPECTOR } from './views/InspectorView';
 import { CorkboardView, VIEW_TYPE_CORKBOARD } from './views/CorkboardView';
 import { ScriveningsView, VIEW_TYPE_SCRIVENINGS } from './views/ScriveningsView';
+import { BinderView, VIEW_TYPE_BINDER } from './views/BinderView'; // Import
 
 export default class NovelistPlugin extends Plugin {
     async onload() {
@@ -18,19 +19,34 @@ export default class NovelistPlugin extends Plugin {
             VIEW_TYPE_SCRIVENINGS,
             (leaf) => new ScriveningsView(leaf)
         );
+        this.registerView(
+            VIEW_TYPE_BINDER,
+            (leaf) => new BinderView(leaf)
+        );
 
-        // 2. Add Command to Open Inspector
+        // 2. Add Ribbon Icon for Binder
+        this.addRibbonIcon('book', 'Open Binder', () => {
+            this.activateBinder();
+        });
+
+        // 3. Add Command to Open Inspector
         this.addCommand({
             id: 'open-novelist-inspector',
             name: 'Open Novelist Inspector',
             callback: () => this.activateInspector(),
         });
+        
+        // Add Command to Open Binder
+        this.addCommand({
+            id: 'open-novelist-binder',
+            name: 'Open Novelist Binder',
+            callback: () => this.activateBinder(),
+        });
 
-        // 3. Context Menu for Folders
+        // 4. Context Menu for Folders
         this.registerEvent(
             this.app.workspace.on("file-menu", (menu, file) => {
                 if (file instanceof TFolder) {
-                    // Option 1: Corkboard
                     menu.addItem((item) => {
                         item
                             .setTitle("Open as Corkboard")
@@ -40,7 +56,6 @@ export default class NovelistPlugin extends Plugin {
                             });
                     });
 
-                    // Option 2: Scrivenings (Composite View)
                     menu.addItem((item) => {
                         item
                             .setTitle("Open as Scrivenings")
@@ -53,9 +68,10 @@ export default class NovelistPlugin extends Plugin {
             })
         );
         
-        // 4. Initialize Layout
+        // 5. Initialize Layout
         this.app.workspace.onLayoutReady(() => {
-            this.activateInspector();
+            // Optional: Activate binder on load if you want it persistent
+            // this.activateBinder(); 
         });
     }
 
@@ -63,6 +79,22 @@ export default class NovelistPlugin extends Plugin {
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_CORKBOARD);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_SCRIVENINGS);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_BINDER);
+    }
+
+    async activateBinder() {
+        const { workspace } = this.app;
+        let leaf: WorkspaceLeaf | null = null;
+        const leaves = workspace.getLeavesOfType(VIEW_TYPE_BINDER);
+
+        if (leaves.length > 0) {
+            leaf = leaves[0];
+        } else {
+            // Create in left split
+            leaf = workspace.getLeftLeaf(false);
+            await leaf.setViewState({ type: VIEW_TYPE_BINDER, active: true });
+        }
+        if (leaf) workspace.revealLeaf(leaf);
     }
 
     async activateInspector() {
@@ -80,24 +112,21 @@ export default class NovelistPlugin extends Plugin {
     }
 
     async openCorkboard(folder: TFolder) {
-        // Open a new leaf in the center
         const leaf = this.app.workspace.getLeaf(true);
         await leaf.setViewState({
             type: VIEW_TYPE_CORKBOARD,
             active: true,
-            state: { folderPath: folder.path } // Pass folder path to view
+            state: { folderPath: folder.path }
         });
     }
 
     async openScrivenings(folder: TFolder) {
-        // Open a new leaf
         const leaf = this.app.workspace.getLeaf(true);
         await leaf.setViewState({
             type: VIEW_TYPE_SCRIVENINGS,
             active: true
         });
         
-        // Pass the folder data to the view
         if (leaf.view instanceof ScriveningsView) {
             await leaf.view.setFolder(folder);
         }
