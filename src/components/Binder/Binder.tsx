@@ -14,8 +14,10 @@ interface BinderProps {
 export const Binder: React.FC<BinderProps> = ({ app }) => {
     const projectManager = new ProjectManager(app);
     
+    // State: Current Active Project (Folder)
     const [currentProject, setCurrentProject] = useState<TFolder | null>(null);
     const [availableProjects, setAvailableProjects] = useState<TFolder[]>([]);
+    
     const [rootChildren, setRootChildren] = useState<TAbstractFile[]>([]);
     const [activeFile, setActiveFile] = useState<TFile | null>(app.workspace.getActiveFile());
     const [fileSystemVersion, setFileSystemVersion] = useState(0);
@@ -24,7 +26,8 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
     );
 
-    // ... [Previous loadProjects function remains the same]
+    // --- Project Detection & Loading ---
+
     const loadProjects = () => {
         const projects = projectManager.getAllProjects();
         setAvailableProjects(projects);
@@ -32,17 +35,14 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         if (activeFile && !currentProject) {
             const parentProject = projectManager.getProjectForFile(activeFile);
             if (parentProject) setCurrentProject(parentProject);
-<<<<<<< HEAD
-        } else if (!currentProject && projects.length > 0) {
-=======
         }
         else if (!currentProject && projects.length > 0) {
->>>>>>> project-trash
             setCurrentProject(projects[0]);
         }
     };
 
-    // ... [Previous sortChildren function remains the same]
+    // --- File Sorting ---
+    
     const sortChildren = (children: TAbstractFile[]) => {
         return [...children].sort((a, b) => {
             const aIsFolder = a instanceof TFolder;
@@ -62,10 +62,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 
                 return a.name.localeCompare(b.name);
             }
-<<<<<<< HEAD
-=======
 
->>>>>>> project-trash
             return getRank(app, a as TFile) - getRank(app, b as TFile);
         });
     };
@@ -79,23 +76,20 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         setFileSystemVersion(v => v + 1);
     };
 
-<<<<<<< HEAD
-    // ... [Previous useEffects for listeners remain the same]
-    useEffect(() => { loadProjects(); }, []);
-=======
     useEffect(() => {
         loadProjects();
     }, []);
 
->>>>>>> project-trash
     useEffect(() => {
         refresh();
+        
         const metaRef = app.metadataCache.on('resolved', () => { loadProjects(); refresh(); });
         const cacheRef = app.metadataCache.on('changed', refresh);
         const modifyRef = app.vault.on('modify', refresh);
         const createRef = app.vault.on('create', () => { loadProjects(); refresh(); });
         const deleteRef = app.vault.on('delete', refresh);
         const renameRef = app.vault.on('rename', refresh);
+
         const activeLeafRef = app.workspace.on('file-open', (file) => {
             setActiveFile(file);
             if (file) {
@@ -105,6 +99,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 }
             }
         });
+
         return () => {
             app.metadataCache.offref(metaRef);
             app.metadataCache.offref(cacheRef);
@@ -116,14 +111,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         };
     }, [app, currentProject]);
 
-<<<<<<< HEAD
-    // --- New Creation Handlers ---
-
-    const handleCreateButton = async (type: 'file' | 'folder') => {
-        if (!currentProject) {
-            new Notice("No project selected.");
-            return;
-=======
     // --- Actions ---
 
     const triggerExternalCommand = (name: string) => {
@@ -134,21 +121,9 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         if (foundCommand) {
             // @ts-ignore
             commands.executeCommandById(foundCommand.id);
->>>>>>> project-trash
         }
-
-        // Default to "Manuscript" folder if available, otherwise Project Root
-        const manuscriptFolder = currentProject.children.find(c => c.name === "Manuscript" && c instanceof TFolder) as TFolder;
-        const targetFolder = manuscriptFolder || currentProject;
-
-        await projectManager.createNewItem(targetFolder, type);
     };
 
-<<<<<<< HEAD
-    // ... [Previous handleDragEnd remains the same]
-    const handleDragEnd = async (event: DragEndEvent) => {
-        const { active, over } = event;
-=======
     const handleCreateButton = async (type: 'file' | 'folder') => {
         if (!currentProject) {
             new Notice("No project selected.");
@@ -160,36 +135,29 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
 
->>>>>>> project-trash
         if (!over || active.id === over.id) return;
 
         const activeFile = app.vault.getAbstractFileByPath(active.id as string);
         const overFile = app.vault.getAbstractFileByPath(over.id as string);
 
         if (!activeFile || !overFile) return;
-<<<<<<< HEAD
-        if (activeFile.parent?.path !== overFile.parent?.path) return;
-=======
 
         if (activeFile.parent?.path !== overFile.parent?.path) {
             return; 
         }
->>>>>>> project-trash
 
         const parentFolder = activeFile.parent;
         if (!parentFolder) return;
 
         const siblings = sortChildren(parentFolder.children);
+        
         const oldIndex = siblings.findIndex(x => x.path === activeFile.path);
         const newIndex = siblings.findIndex(x => x.path === overFile.path);
 
         if (oldIndex === -1 || newIndex === -1) return;
 
         const newOrder = arrayMove(siblings, oldIndex, newIndex);
-<<<<<<< HEAD
-=======
 
->>>>>>> project-trash
         const updatePromises = newOrder.map((file, index) => {
             if (file instanceof TFile && file.extension === 'md') {
                 return app.fileManager.processFrontMatter(file, (fm) => {
@@ -200,9 +168,10 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         });
 
         await Promise.all(updatePromises);
-        // @ts-ignore
-        app.commands.executeCommandById("file-explorer:sort-by-name"); // Trigger generic sort
+        triggerExternalCommand("Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.");
     };
+
+    // --- Render ---
 
     return (
         <div className="novelist-binder-container">
@@ -227,17 +196,10 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
                 {/* Creation Buttons */}
                 <div className="novelist-binder-actions">
-<<<<<<< HEAD
-                    <button onClick={() => handleCreateButton('file')} title="New Document">
-                        <FilePlus size={16} />
-                    </button>
-                    <button onClick={() => handleCreateButton('folder')} title="New Folder">
-=======
                     <button onClick={() => handleCreateButton('file')} title="New Document in Root">
                         <FilePlus size={16} />
                     </button>
                     <button onClick={() => handleCreateButton('folder')} title="New Folder in Root">
->>>>>>> project-trash
                         <FolderPlus size={16} />
                     </button>
                 </div>

@@ -1,19 +1,11 @@
 import React, { useState, useMemo } from 'react';
-<<<<<<< HEAD
-import { TAbstractFile, TFile, TFolder, App, Menu } from 'obsidian';
-import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FilePlus, FolderPlus } from 'lucide-react';
-=======
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
 import { ChevronDown, FileText, Folder, FolderOpen, Trash2 } from 'lucide-react';
->>>>>>> project-trash
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
-<<<<<<< HEAD
-=======
 import { ConfirmModal } from '../../modals/ConfirmModal';
->>>>>>> project-trash
 
 interface BinderNodeProps {
     app: App;
@@ -21,11 +13,7 @@ interface BinderNodeProps {
     depth: number;
     activeFile: TFile | null;
     version: number;
-<<<<<<< HEAD
-    currentProject: TFolder | null; // Receive project context
-=======
     currentProject: TFolder | null;
->>>>>>> project-trash
 }
 
 export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, activeFile, version, currentProject }) => {
@@ -62,8 +50,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
         opacity: inTrash ? 0.7 : 1
     };
 
-<<<<<<< HEAD
-=======
     // --- Rename Handler ---
     const handleRenameSubmit = async () => {
         setIsRenaming(false);
@@ -81,18 +67,12 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
         }
     };
 
->>>>>>> project-trash
     // --- Context Menu Handler ---
     const handleContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
 
         const menu = new Menu();
-<<<<<<< HEAD
-        const projectManager = new ProjectManager(app);
-
-        // 1. Creation Options
-=======
         
         // 1. TRASH FOLDER OPTIONS
         if (isTrashFolder) {
@@ -153,7 +133,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
 
         menu.addSeparator();
 
->>>>>>> project-trash
         menu.addItem((menuItem) => {
             menuItem
                 .setTitle("New Document")
@@ -176,24 +155,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
 
         menu.addSeparator();
 
-<<<<<<< HEAD
-        // 2. Move to Trash Option
-        if (currentProject) {
-            // Don't allow moving the Project Root or the Trash folder itself to Trash
-            const isTrashFolder = item.name === "Trash" && item.parent?.path === currentProject.path;
-            const isMarker = item.name === "project.md";
-            
-            if (!isTrashFolder && !isMarker) {
-                menu.addItem((menuItem) => {
-                    menuItem
-                        .setTitle("Move to Project Trash")
-                        .setIcon("trash-2")
-                        .onClick(() => {
-                            projectManager.moveToTrash(item, currentProject);
-                        });
-                });
-            }
-=======
         // Move to Trash Option
         if (currentProject && item.name !== "project.md") {
             menu.addItem((menuItem) => {
@@ -204,16 +165,11 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
                         projectManager.moveToTrash(item, currentProject);
                     });
             });
->>>>>>> project-trash
         }
 
         menu.addSeparator();
 
-<<<<<<< HEAD
-        // 3. Trigger Native Obsidian Context Menu
-=======
         // Trigger Native Obsidian Context Menu
->>>>>>> project-trash
         app.workspace.trigger(
             "file-menu",
             menu,
@@ -230,15 +186,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
 
     const handleFileClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-<<<<<<< HEAD
-        if (isFile) {
-            app.workspace.getLeaf(false).openFile(item as TFile);
-        } else {
-            setCollapsed(!collapsed);
-        }
-    };
-
-=======
         if (isRenaming) return;
 
         if (isFile) {
@@ -248,7 +195,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
         }
     };
 
->>>>>>> project-trash
     // --- Recursion & Sorting Logic ---
     const sortedChildren = useMemo(() => {
         if (!isFolder) return [];
@@ -284,6 +230,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
                 {...attributes}
                 {...listeners}
             >
+                {/* Collapse Icon */}
                 <div 
                     className={`novelist-binder-collapse-icon ${collapsed ? 'is-collapsed' : ''}`}
                     onClick={(e) => { 
@@ -296,10 +243,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
                     <ChevronDown size={14} />
                 </div>
 
-<<<<<<< HEAD
-=======
                 {/* Icon */}
->>>>>>> project-trash
                 <div className="novelist-binder-icon">
                     {item.name === "Trash" ? <Trash2 size={14} /> : (
                         isFolder ? (
@@ -310,10 +254,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
                     )}
                 </div>
 
-<<<<<<< HEAD
-=======
                 {/* Title / Rename Input */}
->>>>>>> project-trash
                 <div className="novelist-binder-title">
                     {isRenaming ? (
                         <input 
@@ -337,22 +278,15 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
                     )}
                 </div>
 
-<<<<<<< HEAD
-                {rankDisplay !== 999999 && (
-=======
                 {/* Read Only Badge if in Trash */}
                 {inTrash && <span style={{fontSize: '0.7em', opacity: 0.5, marginLeft: 5}}>(Read Only)</span>}
 
                 {rankDisplay !== 999999 && !isFolder && (
->>>>>>> project-trash
                     <div className="novelist-rank-badge">#{rankDisplay}</div>
                 )}
             </div>
 
-<<<<<<< HEAD
-=======
             {/* Children Recursion */}
->>>>>>> project-trash
             {isFolder && !collapsed && sortedChildren.length > 0 && (
                 <div className="novelist-binder-children">
                     <SortableContext 
