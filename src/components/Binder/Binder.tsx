@@ -5,7 +5,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { BinderNode } from './BinderNode';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
-import { Book, FilePlus, FolderPlus } from 'lucide-react';
+import { CreateProjectModal } from '../../modals/CreateProjectModal'; // Import Modal
+import { Book, FilePlus, FolderPlus, PlusCircle } from 'lucide-react';
 
 interface BinderProps {
     app: App;
@@ -113,6 +114,20 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
     // --- Actions ---
 
+    const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value;
+        if (val === '__CREATE_NEW__') {
+            new CreateProjectModal(app, (folder) => {
+                loadProjects();
+                setCurrentProject(folder);
+            }).open();
+            return;
+        }
+
+        const proj = availableProjects.find(p => p.path === val);
+        setCurrentProject(proj || null);
+    };
+
     const triggerExternalCommand = (name: string) => {
         // @ts-ignore
         const commands = app.commands;
@@ -182,11 +197,12 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                     <Book size={16} />
                     <select 
                         value={currentProject?.path || ""}
-                        onChange={(e) => {
-                            const proj = availableProjects.find(p => p.path === e.target.value);
-                            setCurrentProject(proj || null);
-                        }}
+                        onChange={handleProjectChange}
                     >
+                        <option value="__CREATE_NEW__" style={{ fontWeight: 'bold', color: 'var(--interactive-accent)' }}>
+                            + Create New Project...
+                        </option>
+                        <option disabled>──────────────</option>
                         <option value="" disabled>Select Project...</option>
                         {availableProjects.map(p => (
                             <option key={p.path} value={p.path}>{p.name}</option>
@@ -231,7 +247,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             
             {availableProjects.length === 0 && (
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No Projects found. <br/> Use command "Create New Novelist Project".
+                    No Projects found. <br/> Click "Create New Project" above.
                 </div>
             )}
         </div>

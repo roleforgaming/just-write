@@ -14,13 +14,27 @@
     margin-bottom: 8px;
 }
 
+/* Explicitly style the Select and Options for readability */
 .novelist-project-selector select {
     flex-grow: 1;
-    background: transparent;
-    border: none;
-    font-weight: bold;
+    background-color: var(--background-primary); /* Ensures light bg in light mode / dark in dark mode */
     color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 2px 5px;
+    font-weight: bold;
     cursor: pointer;
+    outline: none;
+}
+
+/* Ensure options are legible across platforms */
+.novelist-project-selector select option {
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.novelist-project-selector select:hover {
+    border-color: var(--interactive-accent);
 }
 
 .novelist-binder-actions {

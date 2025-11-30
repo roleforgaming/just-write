@@ -27,7 +27,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
 
     const projectManager = new ProjectManager(app);
     const inTrash = projectManager.isInTrash(item);
-    // Explicitly check path equality to avoid potential substring issues if folders have similar names
     const isTrashFolder = currentProject && item.path === `${currentProject.path}/Trash`;
 
     // --- Drag and Drop Logic ---
@@ -69,8 +68,11 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
 
     // --- Context Menu Handler ---
     const handleContextMenu = (e: React.MouseEvent) => {
+        // Crucial: Stop Immediate Propagation prevents events from bubbling to global 
+        // Obsidian handlers that might trigger navigation or other unintended side effects.
         e.preventDefault();
         e.stopPropagation();
+        e.nativeEvent.stopImmediatePropagation(); 
 
         const menu = new Menu();
         
@@ -185,6 +187,9 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
     };
 
     const handleFileClick = (e: React.MouseEvent) => {
+        // Prevent right-clicks from triggering click logic
+        if (e.button !== 0) return;
+
         e.stopPropagation();
         if (isRenaming) return;
 
@@ -234,6 +239,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
                 <div 
                     className={`novelist-binder-collapse-icon ${collapsed ? 'is-collapsed' : ''}`}
                     onClick={(e) => { 
+                        if(e.button !== 0) return;
                         e.stopPropagation(); 
                         setCollapsed(!collapsed); 
                     }}
