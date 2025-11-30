@@ -1,8 +1,9 @@
-import { Plugin, WorkspaceLeaf, TFolder } from 'obsidian';
+import { Plugin, WorkspaceLeaf, TFolder, TFile } from 'obsidian'; // Fixed: Added TFile
 import { InspectorView, VIEW_TYPE_INSPECTOR } from './views/InspectorView';
 import { CorkboardView, VIEW_TYPE_CORKBOARD } from './views/CorkboardView';
 import { ScriveningsView, VIEW_TYPE_SCRIVENINGS } from './views/ScriveningsView';
-import { BinderView, VIEW_TYPE_BINDER } from './views/BinderView'; // Import
+import { BinderView, VIEW_TYPE_BINDER } from './views/BinderView';
+import { CreateProjectModal } from './modals/CreateProjectModal';
 
 export default class NovelistPlugin extends Plugin {
     async onload() {
@@ -27,6 +28,25 @@ export default class NovelistPlugin extends Plugin {
         // 2. Add Ribbon Icon for Binder
         this.addRibbonIcon('book', 'Open Binder', () => {
             this.activateBinder();
+        });
+
+        // NEW: Command to Create Project
+        this.addCommand({
+            id: 'create-novelist-project',
+            name: 'Create New Novelist Project',
+            callback: () => {
+                new CreateProjectModal(this.app, async (projectFolder) => {
+                    // 1. Create project
+                    // 2. Open Binder
+                    await this.activateBinder();
+                    // 3. Force context switch
+                    const marker = projectFolder.children.find(c => c.name === 'project.md');
+                    // Type guard for TFile used here
+                    if(marker && marker instanceof TFile) {
+                        this.app.workspace.getLeaf(false).openFile(marker);
+                    }
+                }).open();
+            },
         });
 
         // 3. Add Command to Open Inspector

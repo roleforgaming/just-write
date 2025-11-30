@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Inspector } from '../components/Inspector';
+import { ProjectManager } from '../utils/projectManager'; // Fixed: Import added
 
 export const VIEW_TYPE_INSPECTOR = "novelist-inspector-view";
 
@@ -19,7 +20,7 @@ export class InspectorView extends ItemView {
 
     async onOpen() {
         this.root = createRoot(this.contentEl);
-        this.renderReact();
+        this.renderReact(); // Fixed: Removed malformed code from inside parenthesis
         
         // 1. Listen for standard file opening
         this.registerEvent(
@@ -32,7 +33,6 @@ export class InspectorView extends ItemView {
         );
 
         // 2. Listen for our Custom Event from Corkboard
-        // We cast to 'any' because this is a custom event name
         this.registerEvent(
             (this.app.workspace as any).on('novelist:select-file', (file: TFile) => {
                 this.selectedFile = file;
@@ -47,8 +47,21 @@ export class InspectorView extends ItemView {
         
         if (!file || file.extension !== 'md') {
             this.root?.render(
-                <div className="novelist-inspector-empty">
+                <div className="novelist-inspector-empty" style={{padding: '20px', textAlign: 'center'}}>
                     No Document Selected
+                </div>
+            );
+            return;
+        }
+
+        // Fixed: Moved Project Check logic inside the method
+        const pm = new ProjectManager(this.app);
+        const isProjectFile = pm.getProjectForFile(file);
+
+        if (!isProjectFile) {
+            this.root?.render(
+                <div className="novelist-inspector-empty" style={{padding: '20px', textAlign: 'center'}}>
+                    Not a Novelist Project File
                 </div>
             );
             return;

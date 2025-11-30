@@ -1,51 +1,69 @@
 import React, { useState, useEffect } from 'react';
-import { App, TFile, Menu, TAbstractFile, TFolder } from 'obsidian';
+import { App, TFile, TAbstractFile, TFolder } from 'obsidian';
 import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { BinderNode } from './BinderNode';
 import { getRank } from '../../utils/metadata';
+import { ProjectManager } from '../../utils/projectManager';
+import { Book } from 'lucide-react';
 
 interface BinderProps {
     app: App;
 }
 
 export const Binder: React.FC<BinderProps> = ({ app }) => {
-    // We only need the root's children to start the tree
-    const [rootChildren, setRootChildren] = useState(app.vault.getRoot().children);
+    const projectManager = new ProjectManager(app);
+    
+    // State: Current Active Project (Folder)
+    const [currentProject, setCurrentProject] = useState<TFolder | null>(null);
+    const [availableProjects, setAvailableProjects] = useState<TFolder[]>([]);
+    
+    const [rootChildren, setRootChildren] = useState<TAbstractFile[]>([]);
     const [activeFile, setActiveFile] = useState<TFile | null>(app.workspace.getActiveFile());
-    // Version state to force deep re-renders when sort order changes
     const [fileSystemVersion, setFileSystemVersion] = useState(0);
 
-    // Configure sensors to allow clicking without dragging immediately
     const sensors = useSensors(
-        useSensor(PointerSensor, {
-            activationConstraint: {
-                distance: 8, // Drag must move 8px before starting
-            },
-        })
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
     );
 
-    // Helper to trigger external sorting plugins (like Custom File Explorer Sort)
-    const triggerExternalCommand = (name: string) => {
-        // @ts-ignore
-        const commands = app.commands;
-        // @ts-ignore
-        const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === name);
-        if (foundCommand) {
-            // @ts-ignore
-            commands.executeCommandById(foundCommand.id);
+    // --- Project Detection & Loading ---
+
+    const loadProjects = () => {
+        const projects = projectManager.getAllProjects();
+        setAvailableProjects(projects);
+        
+        // Auto-select project if active file belongs to one
+        if (activeFile && !currentProject) {
+            const parentProject = projectManager.getProjectForFile(activeFile);
+            if (parentProject) setCurrentProject(parentProject);
+        }
+        // If no project selected and we have projects, select first
+        else if (!currentProject && projects.length > 0) {
+            setCurrentProject(projects[0]);
         }
     };
 
+    // --- File Sorting ---
+    
     const sortChildren = (children: TAbstractFile[]) => {
         return [...children].sort((a, b) => {
             const aIsFolder = a instanceof TFolder;
             const bIsFolder = b instanceof TFolder;
 
+            // Sort folders top
             if (aIsFolder && !bIsFolder) return -1;
             if (!aIsFolder && bIsFolder) return 1;
 
             if (aIsFolder && bIsFolder) {
+                // Fixed Scrivener Order: Manuscript -> Research -> Trash
+                const fixedOrder = ['Manuscript', 'Research', 'Story Bible', 'Trash'];
+                const aIndex = fixedOrder.indexOf(a.name);
+                const bIndex = fixedOrder.indexOf(b.name);
+                
+                if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                if (aIndex !== -1) return -1;
+                if (bIndex !== -1) return 1;
+                
                 return a.name.localeCompare(b.name);
             }
 
@@ -55,24 +73,39 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     };
 
     const refresh = () => {
-        setRootChildren(sortChildren(app.vault.getRoot().children));
+        // If a project is selected, show its children. Otherwise show nothing or instruction.
+        if (currentProject) {
+            setRootChildren(sortChildren(currentProject.children));
+        } else {
+            setRootChildren([]);
+        }
         setFileSystemVersion(v => v + 1);
     };
 
     useEffect(() => {
-        // Initial sort
-        refresh();
+        loadProjects();
+    }, []); // On Mount
 
-        const metaRef = app.metadataCache.on('resolved', refresh);
-        // 'changed' event fires when a file's cache is updated (e.g. rank changed)
+    useEffect(() => {
+        refresh();
+        
+        const metaRef = app.metadataCache.on('resolved', () => { loadProjects(); refresh(); });
         const cacheRef = app.metadataCache.on('changed', refresh);
         const modifyRef = app.vault.on('modify', refresh);
-        const createRef = app.vault.on('create', refresh);
+        // Important: Create might add a new Project
+        const createRef = app.vault.on('create', () => { loadProjects(); refresh(); });
         const deleteRef = app.vault.on('delete', refresh);
         const renameRef = app.vault.on('rename', refresh);
 
         const activeLeafRef = app.workspace.on('file-open', (file) => {
             setActiveFile(file);
+            // Auto-switch binder if user creates/opens file in different project
+            if (file) {
+                const proj = projectManager.getProjectForFile(file);
+                if (proj && proj.path !== currentProject?.path) {
+                    setCurrentProject(proj);
+                }
+            }
         });
 
         return () => {
@@ -84,21 +117,19 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             app.vault.offref(renameRef);
             app.workspace.offref(activeLeafRef);
         };
-    }, [app]);
+    }, [app, currentProject]);
 
-    const handleBackgroundContextMenu = (e: React.MouseEvent) => {
-        e.preventDefault();
-        if (e.target !== e.currentTarget) return;
-
-        const menu = new Menu();
-        app.workspace.trigger(
-            "file-menu",
-            menu,
-            app.vault.getRoot(),
-            "file-explorer",
-            app.workspace.getLeaf(false)
-        );
-        menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
+    // --- Drag and Drop Logic (Restored) ---
+    
+    const triggerExternalCommand = (name: string) => {
+        // @ts-ignore
+        const commands = app.commands;
+        // @ts-ignore
+        const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === name);
+        if (foundCommand) {
+            // @ts-ignore
+            commands.executeCommandById(foundCommand.id);
+        }
     };
 
     const handleDragEnd = async (event: DragEndEvent) => {
@@ -142,16 +173,39 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         });
 
         await Promise.all(updatePromises);
-
-        // Sync with external sorting plugins if present
         triggerExternalCommand("Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.");
     };
 
+    // --- Render ---
+
     return (
-        <div 
-            className="novelist-binder-container"
-            onContextMenu={handleBackgroundContextMenu}
-        >
+        <div className="novelist-binder-container">
+            {/* Project Selector Header */}
+            <div className="novelist-project-selector" style={{ 
+                padding: '10px', 
+                borderBottom: '1px solid var(--background-modifier-border)',
+                marginBottom: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+            }}>
+                <Book size={16} />
+                <select 
+                    value={currentProject?.path || ""}
+                    onChange={(e) => {
+                        const proj = availableProjects.find(p => p.path === e.target.value);
+                        setCurrentProject(proj || null);
+                    }}
+                    style={{ flexGrow: 1, background: 'transparent', border: 'none', fontWeight: 'bold' }}
+                >
+                    <option value="" disabled>Select Project...</option>
+                    {availableProjects.map(p => (
+                        <option key={p.path} value={p.path}>{p.name}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Standard Tree */}
             <DndContext 
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -173,6 +227,12 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                     ))}
                 </SortableContext>
             </DndContext>
+            
+            {availableProjects.length === 0 && (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No Projects found. <br/> Use command "Create New Novelist Project".
+                </div>
+            )}
         </div>
     );
 };
