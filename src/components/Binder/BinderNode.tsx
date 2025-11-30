@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TAbstractFile, TFile, TFolder, App } from 'obsidian';
+import { TAbstractFile, TFile, TFolder, App, Menu } from 'obsidian';
 import { ChevronDown, FileText, Folder, FolderOpen } from 'lucide-react';
 import { getRank } from '../../utils/metadata';
 
@@ -27,10 +27,28 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
     };
 
     const handleContextMenu = (e: React.MouseEvent) => {
-        // Trigger Obsidian's native file menu
-        const evt = e.nativeEvent;
-        // @ts-ignore - internal API
-        app.workspace.trigger('file-menu', null, item, "file-explorer", app.workspace.getLeaf(false));
+        // Prevent the browser's native context menu
+        e.preventDefault();
+        e.stopPropagation();
+
+        const menu = new Menu();
+
+        // Trigger the 'file-menu' event. 
+        // This allows Obsidian Core (File Explorer) and other plugins to populate the menu
+        // with actions like Rename, Delete, Make Copy, etc.
+        app.workspace.trigger(
+            "file-menu",
+            menu,
+            item,
+            "file-explorer", // Source: mimics the native file explorer
+            app.workspace.getLeaf(false)
+        );
+
+        // Show the menu at the cursor position
+        menu.showAtPosition({
+            x: e.nativeEvent.clientX,
+            y: e.nativeEvent.clientY
+        });
     };
 
     const getChildren = () => {
@@ -38,7 +56,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({ app, item, depth, active
         const folder = item as TFolder;
         
         // Sort: Folders first (alpha), then Files (by Rank)
-        // You can adjust this to mix them if preferred
         const children = [...folder.children];
         
         return children.sort((a, b) => {

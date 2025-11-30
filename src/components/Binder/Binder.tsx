@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { App, TFile } from 'obsidian';
+import { App, TFile, Menu } from 'obsidian';
 import { BinderNode } from './BinderNode';
 
 interface BinderProps {
@@ -38,8 +38,36 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         };
     }, [app]);
 
+    // Handle right-click on the empty background area
+    const handleBackgroundContextMenu = (e: React.MouseEvent) => {
+        // Prevent default browser menu
+        e.preventDefault();
+        
+        // Don't trigger if we clicked an item (BinderNode handles propagation)
+        if (e.target !== e.currentTarget) return;
+
+        const menu = new Menu();
+
+        // Trigger file-menu for the Root Folder
+        app.workspace.trigger(
+            "file-menu",
+            menu,
+            app.vault.getRoot(),
+            "file-explorer",
+            app.workspace.getLeaf(false)
+        );
+
+        menu.showAtPosition({
+            x: e.nativeEvent.clientX,
+            y: e.nativeEvent.clientY
+        });
+    };
+
     return (
-        <div className="novelist-binder-container">
+        <div 
+            className="novelist-binder-container"
+            onContextMenu={handleBackgroundContextMenu}
+        >
             {rootChildren.map(child => (
                 <BinderNode 
                     key={child.path}
