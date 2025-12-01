@@ -223,4 +223,46 @@ notes: ""
             await this.app.vault.create(fullPath, content);
         }
     }
+
+    // NEW: Get Project Details for the Dashboard
+    getProjectMetadata(folder: TFolder) {
+        const marker = folder.children.find(c => c.name === 'project.md') as TFile;
+        if (!marker) return null;
+        
+        const cache = this.app.metadataCache.getFileCache(marker);
+        const fm = cache?.frontmatter || {};
+        
+        return {
+            name: folder.name,
+            path: folder.path,
+            status: fm.status || 'Planning',
+            tags: fm.tags || [],
+            description: fm.description || "No description provided.",
+            isArchived: fm.archived === true || fm.status === 'Archived'
+        };
+    }
+
+    // NEW: Update Project Metadata (Description, Tags, Status, Archived)
+    async updateProjectMetadata(folder: TFolder, data: { description?: string, tags?: string[], status?: string, archived?: boolean }) {
+        const marker = folder.children.find(c => c.name === 'project.md') as TFile;
+        if (!marker) return;
+
+        await this.app.fileManager.processFrontMatter(marker, (fm) => {
+            if (data.description !== undefined) fm.description = data.description;
+            if (data.tags !== undefined) fm.tags = data.tags;
+            if (data.status !== undefined) fm.status = data.status;
+            if (data.archived !== undefined) fm.archived = data.archived;
+        });
+    }
+
+    // NEW: Rename Project (Renames the Folder)
+    async renameProject(folder: TFolder, newName: string) {
+        if (folder.name === newName) return;
+        const newPath = normalizePath(`${folder.parent?.path || ''}/${newName}`);
+        try {
+            await this.app.fileManager.renameFile(folder, newPath);
+        } catch (e) {
+            new Notice("Could not rename project. Name might behave exist.");
+        }
+    }
 }
