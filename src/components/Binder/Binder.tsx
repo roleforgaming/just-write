@@ -126,7 +126,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         setFileSystemVersion(v => v + 1);
     }, [sortChildren]);
 
-    // --- CRITICAL FIX: Trigger View Refresh when Project Changes ---
+    // --- Trigger View Refresh when Project Changes ---
     useEffect(() => {
         refresh();
     }, [currentProject, refresh]);
@@ -507,11 +507,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         }),
     };
 
-    const handleSearchClick = () => {
-        const searchInput = document.querySelector('.novelist-binder-filter input.has-icon') as HTMLInputElement;
-        if (searchInput) searchInput.focus();
-    };
-
     return (
         <div 
             className="novelist-binder-container" 
@@ -556,7 +551,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
                 <div className="novelist-binder-actions">
                     <button onClick={openDashboard} title="Open Project Dashboard"><LayoutDashboard size={16} /></button>
-                    <button onClick={handleSearchClick} title="Search in Project Content" style={{marginRight: 5}}><Search size={16} /></button>
+                    {/* Search button removed here */}
                     <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--background-modifier-border)', margin: '0 5px' }}></div>
                     <button onClick={() => currentProject && projectManager.createNewItem(currentProject, 'file')} title="New Document"><FilePlus size={16} /></button>
                     <button onClick={() => currentProject && projectManager.createNewItem(currentProject, 'folder')} title="New Folder"><FolderPlus size={16} /></button>
