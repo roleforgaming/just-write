@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { App, TFile, TAbstractFile, TFolder } from 'obsidian';
 import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors, DragStartEvent, DragOverlay, defaultDropAnimationSideEffects, DropAnimation } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -6,10 +6,19 @@ import { BinderNode } from './BinderNode';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
 import { CreateProjectModal } from '../../modals/CreateProjectModal';
-import { Book, FilePlus, FolderPlus, LayoutDashboard, FileText } from 'lucide-react';
+import { Book, FilePlus, FolderPlus, LayoutDashboard, FileText, X, Search } from 'lucide-react';
 
 interface BinderProps {
     app: App;
+}
+
+interface ContentSearchResult {
+    file: TFile;
+    matches: {
+        start: number;
+        end: number;
+        context: string;
+    }[];
 }
 
 export const Binder: React.FC<BinderProps> = ({ app }) => {
@@ -20,6 +29,12 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     const [rootChildren, setRootChildren] = useState<TAbstractFile[]>([]);
     const [activeFile, setActiveFile] = useState<TFile | null>(app.workspace.getActiveFile());
     const [fileSystemVersion, setFileSystemVersion] = useState(0);
+
+    // --- Filter & Search State ---
+    const [nameFilter, setNameFilter] = useState('');
+    const [contentQuery, setContentQuery] = useState('');
+    const [contentResults, setContentResults] = useState<ContentSearchResult[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
 
     // Multi-Select State
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -91,6 +106,88 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         return () => events.forEach(ref => app.vault.offref(ref as any));
     }, [app, currentProject]);
 
+    // --- Content Search Logic ---
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(async () => {
+            if (!contentQuery || contentQuery.length < 2 || !currentProject) {
+                setContentResults([]);
+                setIsSearching(false);
+                return;
+            }
+
+            setIsSearching(true);
+            const results: ContentSearchResult[] = [];
+            const files = getAllFilesRecursively(currentProject);
+
+            for (const file of files) {
+                if (file.extension !== 'md') continue;
+                
+                try {
+                    const content = await app.vault.cachedRead(file);
+                    // Strip frontmatter
+                    const contentBody = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+                    
+                    const matches = findMatches(contentBody, contentQuery);
+                    if (matches.length > 0) {
+                        results.push({ file, matches });
+                    }
+                } catch (e) {
+                    console.error("Error searching file", file.path, e);
+                }
+            }
+
+            setContentResults(results);
+            setIsSearching(false);
+        }, 500); // 500ms debounce
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [contentQuery, currentProject]);
+
+    const getAllFilesRecursively = (folder: TFolder): TFile[] => {
+        let files: TFile[] = [];
+        for (const child of folder.children) {
+            if (child instanceof TFile) files.push(child);
+            else if (child instanceof TFolder) files = files.concat(getAllFilesRecursively(child));
+        }
+        return files;
+    };
+
+    const findMatches = (content: string, query: string) => {
+        const matches = [];
+        // Escape regex special characters
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escapedQuery, 'gi');
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+            const start = match.index;
+            const end = start + match[0].length;
+            
+            // Get context (surrounding text)
+            const contextStart = Math.max(0, start - 30);
+            const contextEnd = Math.min(content.length, end + 30);
+            const contextText = content.substring(contextStart, contextEnd);
+            
+            matches.push({ start, end, context: "..." + contextText + "..." });
+            if (matches.length >= 2) break; // Limit matches per file for sidebar view
+        }
+        return matches;
+    };
+
+    const highlightText = (text: string, query: string) => {
+        if (!query) return text;
+        const parts = text.split(new RegExp(`(${query})`, 'gi'));
+        return (
+            <span>
+                {parts.map((part, i) => 
+                    part.toLowerCase() === query.toLowerCase() ? 
+                        <span key={i} style={{ backgroundColor: 'rgba(var(--interactive-accent-rgb), 0.3)', color: 'var(--text-normal)', borderRadius: 2, padding: '0 1px' }}>{part}</span> : 
+                        part
+                )}
+            </span>
+        );
+    };
+
     // --- Selection Logic (Multi-Select) ---
     const handleNodeClick = useCallback((e: React.MouseEvent, file: TAbstractFile) => {
         e.stopPropagation();
@@ -99,18 +196,14 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         const newSelection = new Set(selectedPaths);
 
         if (e.shiftKey && lastSelectedPath) {
-            // Simple range fallback: Add to selection
             newSelection.add(path);
         } else if (e.metaKey || e.ctrlKey) {
-            // Toggle Selection
             if (newSelection.has(path)) newSelection.delete(path);
             else newSelection.add(path);
         } else {
-            // Single Selection
             newSelection.clear();
             newSelection.add(path);
             
-            // Open file if it's a file
             if (file instanceof TFile) {
                 app.workspace.getLeaf(false).openFile(file);
             }
@@ -121,8 +214,8 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     }, [selectedPaths, lastSelectedPath, app]);
 
     // --- Drag & Drop Logic ---
-
     const handleDragStart = (event: DragStartEvent) => {
+        if (nameFilter || contentQuery) return; // Disable drag when filtering
         const { active } = event;
         setActiveDragId(active.id as string);
 
@@ -132,6 +225,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     };
 
     const handleDragEnd = async (event: DragEndEvent) => {
+        if (nameFilter || contentQuery) return;
         const { active, over } = event;
         setActiveDragId(null);
 
@@ -156,10 +250,9 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             itemsToMove.add(activeItem);
         }
 
-        // 1. Reparenting: Dropping *ON* a folder
+        // 1. Reparenting
         const isOverFolder = overItem instanceof TFolder;
         
-        // Heuristic: Drop into folder if hovering over it (not siblings sorting)
         if (isOverFolder && itemsToMove.size > 0) {
             const targetFolder = overItem as TFolder;
             let moved = false;
@@ -184,7 +277,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             }
         }
 
-        // 2. Reordering (Sorting siblings)
+        // 2. Reordering
         if (activeItem.parent?.path === overItem.parent?.path) {
             const parentFolder = activeItem.parent;
             if (!parentFolder) return;
@@ -253,6 +346,31 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                         {availableProjects.map(p => <option key={p.path} value={p.path}>{p.name}</option>)}
                     </select>
                 </div>
+
+                {/* Filter and Search Inputs */}
+                <div className="novelist-binder-filter-group">
+                    <div className="novelist-binder-filter">
+                        <input 
+                            type="text" 
+                            placeholder="Filter files by name..." 
+                            value={nameFilter}
+                            onChange={(e) => setNameFilter(e.target.value)}
+                        />
+                        {nameFilter && <X size={12} className="clear-filter" onClick={() => setNameFilter('')} />}
+                    </div>
+                    <div className="novelist-binder-filter">
+                        <Search size={12} className="search-icon-input" />
+                        <input 
+                            type="text" 
+                            placeholder="Search project content..." 
+                            value={contentQuery}
+                            onChange={(e) => setContentQuery(e.target.value)}
+                            className="has-icon"
+                        />
+                        {contentQuery && <X size={12} className="clear-filter" onClick={() => setContentQuery('')} />}
+                    </div>
+                </div>
+
                 <div className="novelist-binder-actions">
                     <button onClick={() => triggerExternalCommand('Open Project Dashboard')} title="Open Project Dashboard"><LayoutDashboard size={16} /></button>
                     <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--background-modifier-border)', margin: '0 5px' }}></div>
@@ -261,46 +379,75 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 </div>
             </div>
 
-            <DndContext 
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-            >
-                <SortableContext items={rootChildren.map(c => c.path)} strategy={verticalListSortingStrategy}>
-                    {rootChildren.map(child => (
-                        <BinderNode 
-                            key={child.path}
-                            app={app}
-                            item={child}
-                            depth={0}
-                            activeFile={activeFile}
-                            version={fileSystemVersion}
-                            currentProject={currentProject}
-                            selectedPaths={selectedPaths}
-                            onNodeClick={handleNodeClick}
-                        />
-                    ))}
-                </SortableContext>
-
-                <DragOverlay dropAnimation={dropAnimation}>
-                    {activeDragId ? (
-                        <div className="novelist-drag-overlay">
-                            {selectedPaths.size > 1 ? (
-                                <div className="novelist-drag-stack">
-                                    <FileText size={16} /> 
-                                    <span>{selectedPaths.size} items</span>
-                                </div>
-                            ) : (
-                                <div className="novelist-drag-single">
-                                    <FileText size={16} />
-                                    <span>{app.vault.getAbstractFileByPath(activeDragId)?.name}</span>
-                                </div>
-                            )}
+            {/* Conditional Render: Search Results vs Binder Tree */}
+            {contentQuery.length >= 2 ? (
+                <div className="novelist-search-results-inline">
+                    {isSearching && <div className="search-loading">Searching...</div>}
+                    {!isSearching && contentResults.length === 0 && <div className="search-empty">No results found.</div>}
+                    
+                    {contentResults.map((res) => (
+                        <div 
+                            key={res.file.path} 
+                            className="novelist-search-item"
+                            onClick={() => app.workspace.getLeaf(false).openFile(res.file)}
+                        >
+                            <div className="search-item-title">
+                                <FileText size={12} />
+                                <span>{res.file.basename}</span>
+                            </div>
+                            <div className="search-item-matches">
+                                {res.matches.map((m, i) => (
+                                    <div key={i} className="search-match-context">
+                                        {highlightText(m.context, contentQuery)}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    ) : null}
-                </DragOverlay>
-            </DndContext>
+                    ))}
+                </div>
+            ) : (
+                <DndContext 
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                >
+                    <SortableContext items={rootChildren.map(c => c.path)} strategy={verticalListSortingStrategy} disabled={!!nameFilter}>
+                        {rootChildren.map(child => (
+                            <BinderNode 
+                                key={child.path}
+                                app={app}
+                                item={child}
+                                depth={0}
+                                activeFile={activeFile}
+                                version={fileSystemVersion}
+                                currentProject={currentProject}
+                                selectedPaths={selectedPaths}
+                                onNodeClick={handleNodeClick}
+                                filterQuery={nameFilter} // Pass Name Filter
+                            />
+                        ))}
+                    </SortableContext>
+
+                    <DragOverlay dropAnimation={dropAnimation}>
+                        {activeDragId ? (
+                            <div className="novelist-drag-overlay">
+                                {selectedPaths.size > 1 ? (
+                                    <div className="novelist-drag-stack">
+                                        <FileText size={16} /> 
+                                        <span>{selectedPaths.size} items</span>
+                                    </div>
+                                ) : (
+                                    <div className="novelist-drag-single">
+                                        <FileText size={16} />
+                                        <span>{app.vault.getAbstractFileByPath(activeDragId)?.name}</span>
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
+                    </DragOverlay>
+                </DndContext>
+            )}
         </div>
     );
 };

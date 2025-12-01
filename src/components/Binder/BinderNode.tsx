@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
 import { ChevronDown, FileText, Folder, FolderOpen, Trash2 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -16,11 +16,12 @@ interface BinderNodeProps {
     currentProject: TFolder | null;
     selectedPaths: Set<string>;
     onNodeClick: (e: React.MouseEvent, file: TAbstractFile) => void;
+    filterQuery?: string; // Added prop
 }
 
 export const BinderNode: React.FC<BinderNodeProps> = ({ 
     app, item, depth, activeFile, version, currentProject, 
-    selectedPaths, onNodeClick 
+    selectedPaths, onNodeClick, filterQuery = ''
 }) => {
     const [collapsed, setCollapsed] = useState(false);
     const [isRenaming, setIsRenaming] = useState(false);
@@ -34,6 +35,30 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     const projectManager = new ProjectManager(app);
     const inTrash = projectManager.isInTrash(item);
     const isTrashFolder = currentProject && item.path === `${currentProject.path}/Trash`;
+
+    // --- Filter Logic ---
+    // Function to recursively check if a node or its children matches the filter
+    const matchesFilter = (node: TAbstractFile, query: string): boolean => {
+        if (!query) return true;
+        if (node.name.toLowerCase().includes(query.toLowerCase())) return true;
+        if (node instanceof TFolder) {
+            return node.children.some(child => matchesFilter(child, query));
+        }
+        return false;
+    };
+
+    const isVisible = useMemo(() => matchesFilter(item, filterQuery), [item, filterQuery, version]);
+    const shouldExpand = useMemo(() => {
+        // If querying, expand if children contain match but I don't match directly (or do, keep structure)
+        if (!filterQuery || !isFolder) return false;
+        return (item as TFolder).children.some(child => matchesFilter(child, filterQuery));
+    }, [item, filterQuery, version]);
+
+    useEffect(() => {
+        if (filterQuery && shouldExpand) {
+            setCollapsed(false);
+        }
+    }, [filterQuery, shouldExpand]);
 
     // --- Drag and Drop Logic ---
     const {
@@ -52,7 +77,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             path: item.path,
             parent: item.parent?.path
         },
-        disabled: inTrash || isTrashFolder || isRenaming
+        disabled: inTrash || isTrashFolder || isRenaming || !!filterQuery // Disable DND during filter
     });
 
     // Determine drop visual feedback
@@ -137,6 +162,8 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
     const rankDisplay = isFile ? getRank(app, item as TFile) : null;
 
+    if (!isVisible) return null;
+
     return (
         <div className="novelist-binder-item" ref={setNodeRef} style={style}>
             <div 
@@ -155,7 +182,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                     className={`novelist-binder-collapse-icon ${collapsed ? 'is-collapsed' : ''}`}
                     onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}
                     style={{ visibility: isFolder ? 'visible' : 'hidden' }}
-                    onPointerDown={(e) => e.stopPropagation()} // Prevent drag start on collapse
+                    onPointerDown={(e) => e.stopPropagation()}
                 >
                     <ChevronDown size={14} />
                 </div>
@@ -186,7 +213,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
             {isFolder && !collapsed && (
                 <div className="novelist-binder-children">
-                    <SortableContext items={sortedChildren.map(c => c.path)} strategy={verticalListSortingStrategy}>
+                    <SortableContext items={sortedChildren.map(c => c.path)} strategy={verticalListSortingStrategy} disabled={!!filterQuery}>
                         {sortedChildren.map(child => (
                             <BinderNode 
                                 key={child.path} 
@@ -198,6 +225,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                                 currentProject={currentProject}
                                 selectedPaths={selectedPaths}
                                 onNodeClick={onNodeClick}
+                                filterQuery={filterQuery} // Pass recursive prop
                             />
                         ))}
                     </SortableContext>
