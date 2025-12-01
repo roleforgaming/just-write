@@ -11,6 +11,8 @@ export class ProjectManager {
         this.app = app;
     }
 
+    // ... [Previous methods: isProject, getProjectForFile, getAllProjects, createProject, etc. remain unchanged] ...
+
     isProject(folder: TFolder): boolean {
         const markerFile = folder.children.find(
             c => c.name === PROJECT_MARKER_FILE && c instanceof TFile
@@ -165,18 +167,15 @@ Project notes and synopsis go here.
         new Notice(`Restored "${item.name}"`);
     }
 
-    // FIX: Updated logic to handle snapshots and folder resolution
     async emptyTrash(trashFolder: TFolder) {
         let target = trashFolder;
         
-        // If passed folder isn't explicitly named Trash, try to find it (in case Root was passed)
         if (target.name !== 'Trash') {
             const found = this.getTrashFolder(target);
             if (found) target = found;
             else return; 
         }
 
-        // Create snapshot of children to iterate safely while deleting
         const children = [...target.children]; 
         
         for (const child of children) {
@@ -224,7 +223,8 @@ notes: ""
         }
     }
 
-    // NEW: Get Project Details for the Dashboard
+    // --- UPDATED METHODS ---
+
     getProjectMetadata(folder: TFolder) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return null;
@@ -232,17 +232,20 @@ notes: ""
         const cache = this.app.metadataCache.getFileCache(marker);
         const fm = cache?.frontmatter || {};
         
+        // Capture Last Modified Time from the file system
+        const lastModified = marker.stat.mtime;
+
         return {
             name: folder.name,
             path: folder.path,
             status: fm.status || 'Planning',
             tags: fm.tags || [],
             description: fm.description || "No description provided.",
-            isArchived: fm.archived === true || fm.status === 'Archived'
+            isArchived: fm.archived === true || fm.status === 'Archived',
+            lastModified: lastModified // Added field
         };
     }
 
-    // NEW: Update Project Metadata (Description, Tags, Status, Archived)
     async updateProjectMetadata(folder: TFolder, data: { description?: string, tags?: string[], status?: string, archived?: boolean }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -255,7 +258,6 @@ notes: ""
         });
     }
 
-    // NEW: Rename Project (Renames the Folder)
     async renameProject(folder: TFolder, newName: string) {
         if (folder.name === newName) return;
         const newPath = normalizePath(`${folder.parent?.path || ''}/${newName}`);
