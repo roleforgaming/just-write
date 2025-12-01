@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
 import { ChevronDown, FileText, Folder, FolderOpen, Trash2 } from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';

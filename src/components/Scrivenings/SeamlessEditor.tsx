@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
 import { ScriveningsModel } from './ScriveningsModel';
+import { livePreviewPlugin } from './LivePreviewExtension'; // Import the new extension
 import matter from 'gray-matter'; 
 
 // CodeMirror Imports
@@ -51,7 +52,7 @@ const protectSeparators = EditorState.changeFilter.of((tr: Transaction) => {
     return allow;
 });
 
-// --- 3. The Decorator Logic (Unchanged) ---
+// --- 3. The Decorator Logic (For Separators) ---
 function buildDecorations(state: EditorState, model: ScriveningsModel): DecorationSet {
     const builder = new RangeSetBuilder<Decoration>();
     const docString = state.doc.toString();
@@ -106,7 +107,6 @@ function buildDecorations(state: EditorState, model: ScriveningsModel): Decorati
     return builder.finish();
 }
 
-// --- 4. The StateField (Unchanged) ---
 const separatorField = (model: ScriveningsModel) => StateField.define<DecorationSet>({
     create(state) {
         return buildDecorations(state, model);
@@ -120,7 +120,7 @@ const separatorField = (model: ScriveningsModel) => StateField.define<Decoration
     provide: (field) => EditorView.decorations.from(field)
 });
 
-// --- 5. The React Component ---
+// --- 4. The React Component ---
 interface EditorProps {
     app: App;
     folder: TFolder;
@@ -133,7 +133,6 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
     const isSavingRef = useRef(false);
     const lastActivePathRef = useRef<string | null>(null);
 
-    // New State for Sticky Header
     const [stickyTitle, setStickyTitle] = useState<string>("");
 
     useEffect(() => {
@@ -145,7 +144,7 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             if (modelRef.current.sections.length > 0) {
                 const firstFile = modelRef.current.sections[0].file;
                 lastActivePathRef.current = firstFile.path;
-                setStickyTitle(firstFile.basename); // Init title
+                setStickyTitle(firstFile.basename);
                 (app.workspace as any).trigger('novelist:select-file', firstFile);
             }
 
@@ -156,10 +155,13 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                     history(),
                     drawSelection(),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
-                    markdown({ codeLanguages: languages }),
+                    markdown({ codeLanguages: languages }), // Required for Syntax Tree to work
                     EditorView.lineWrapping,
+                    
+                    // Custom Extensions
                     protectSeparators,
                     separatorField(modelRef.current),
+                    livePreviewPlugin(app, modelRef.current), // <--- Inject Live Preview Extension here
 
                     EditorView.theme({
                         "&": { height: "100%", fontSize: "var(--font-text-size)" },
@@ -180,23 +182,27 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                             fontSize: "0.85em",
                             fontWeight: "600",
                             userSelect: "none"
+                        },
+                        // Live Preview Block Styles
+                        ".novelist-live-preview-block": {
+                            marginTop: "0.5em",
+                            marginBottom: "0.5em"
+                        },
+                        ".novelist-live-preview-block h1, .novelist-live-preview-block h2, .novelist-live-preview-block h3": {
+                            marginTop: "0 !important", // Let CM handle spacing
+                            marginBottom: "0 !important"
                         }
                     }),
 
                     EditorView.updateListener.of((update) => {
-                        // 1. Handle Autosave
                         if (update.docChanged) {
                             if (!update.transactions.some(tr => tr.annotation(Transaction.userEvent) === "sync")) {
                                 handleSave(update.state.doc.toString());
                             }
                         }
-
-                        // 2. Handle Inspector Sync (Cursor based)
                         if (update.selectionSet || update.docChanged) {
                             detectActiveFile(update.state);
                         }
-
-                        // 3. Handle Sticky Header (Scroll/Viewport based)
                         if (update.viewportChanged || update.docChanged) {
                             updateStickyHeader(update.view);
                         }
@@ -210,11 +216,9 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
 
         init();
 
-        // --- Logic to detect file based on cursor position (For Inspector) ---
         const detectActiveFile = (state: EditorState) => {
             const pos = state.selection.main.head;
             const docString = state.doc.toString();
-            
             const regex = /<!-- SC_BREAK -->/g;
             const matches = [...docString.matchAll(regex)];
             let sectionIndex = 0;
@@ -235,11 +239,9 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             }
         };
 
-        // --- Logic for Sticky Header (Based on Visual Top) ---
         const updateStickyHeader = (view: EditorView) => {
             const topPos = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 10).from;
             const docString = view.state.doc.toString();
-
             const regex = /<!-- SC_BREAK -->/g;
             const matches = [...docString.matchAll(regex)];
             let sectionIndex = 0;
@@ -259,7 +261,6 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             }
         };
 
-        // --- Live Sync Listener ---
         const onVaultModify = async (file: TAbstractFile) => {
             if (isSavingRef.current) return; 
             if (!(file instanceof TFile) || file.extension !== 'md') return;
@@ -268,14 +269,11 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             if (sectionIndex === -1) return;
 
             const rawContent = await app.vault.read(file);
-            
-            // USE GRAY-MATTER for robust parsing
             const parsed = matter(rawContent);
             const newBody = parsed.content;
             
             if (!viewRef.current) return;
             const currentDoc = viewRef.current.state.doc.toString();
-            
             const regex = /(?:\r?\n)*<!-- SC_BREAK -->(?:\r?\n)*/g;
             const matches = [...currentDoc.matchAll(regex)];
 
@@ -324,13 +322,11 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
 
     return (
         <div style={{ position: 'relative', height: '100%' }}>
-            {/* STICKY HEADER OVERLAY */}
             {stickyTitle && (
                 <div className="novelist-sticky-header">
                     {stickyTitle}
                 </div>
             )}
-            
             <div ref={editorRef} style={{ height: '100%', overflow: 'hidden' }} />
         </div>
     );
