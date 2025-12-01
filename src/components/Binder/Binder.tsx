@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { App, TFile, TAbstractFile, TFolder } from 'obsidian';
+import { App, TFile, TAbstractFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors, DragStartEvent, DragOverlay, defaultDropAnimationSideEffects, DropAnimation } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { BinderNode } from './BinderNode';
@@ -7,6 +7,9 @@ import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
 import { CreateProjectModal } from '../../modals/CreateProjectModal';
 import { Book, FilePlus, FolderPlus, LayoutDashboard, FileText, Search, X } from 'lucide-react';
+
+// Hardcoded to prevent import path issues
+const VIEW_TYPE_DASHBOARD = "novelist-dashboard-view";
 
 interface BinderProps {
     app: App;
@@ -22,14 +25,26 @@ interface ContentSearchResult {
 }
 
 export const Binder: React.FC<BinderProps> = ({ app }) => {
-    const projectManager = new ProjectManager(app);
+    const projectManager = useMemo(() => new ProjectManager(app), [app]);
     const containerRef = useRef<HTMLDivElement>(null);
     
+    // State
     const [currentProject, setCurrentProject] = useState<TFolder | null>(null);
     const [availableProjects, setAvailableProjects] = useState<TFolder[]>([]);
     const [rootChildren, setRootChildren] = useState<TAbstractFile[]>([]);
     const [activeFile, setActiveFile] = useState<TFile | null>(app.workspace.getActiveFile());
     const [fileSystemVersion, setFileSystemVersion] = useState(0);
+
+    // Refs for Event Listeners (Prevents Stale Closures)
+    const currentProjectRef = useRef(currentProject);
+    const activeFileRef = useRef(activeFile);
+    
+    // Track the LAST processed active file path to prevent redundant switching on focus
+    const lastProcessedActivePath = useRef<string | null>(activeFile ? activeFile.path : null);
+
+    // Sync Refs
+    useEffect(() => { currentProjectRef.current = currentProject; }, [currentProject]);
+    useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
 
     // --- Filter & Search State ---
     const [nameFilter, setNameFilter] = useState('');
@@ -50,19 +65,40 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     );
 
     // --- Project Loading & Sorting ---
-    const loadProjects = () => {
+    const loadProjects = useCallback(() => {
         const projects = projectManager.getAllProjects();
         setAvailableProjects(projects);
-        if (activeFile && !currentProject) {
-            const parentProject = projectManager.getProjectForFile(activeFile);
-            if (parentProject) setCurrentProject(parentProject);
-        } else if (!currentProject && projects.length > 0) {
-            setCurrentProject(projects[0]);
-        }
-    };
+        
+        const current = currentProjectRef.current;
+        const active = activeFileRef.current;
 
-    // Centralized sort function used by Binder and BinderNode (implicitly via rendering order)
-    // To ensure keyboard navigation matches visual order, this logic must be consistent.
+        // 1. Existing Selection Priority
+        if (current) {
+            const stillExists = projects.find(p => p.path === current.path);
+            if (stillExists) {
+                if (stillExists !== current) setCurrentProject(stillExists);
+                return; 
+            }
+        }
+
+        // 2. Active File Priority (Only if no current selection)
+        if (active) {
+            const parentProject = projectManager.getProjectForFile(active);
+            if (parentProject) {
+                setCurrentProject(parentProject);
+                return;
+            }
+        } 
+
+        // 3. Fallback
+        if (projects.length > 0) {
+            setCurrentProject(projects[0]);
+        } else {
+            setCurrentProject(null);
+        }
+    }, [projectManager]);
+
+    // Centralized sort function
     const sortChildren = useCallback((children: TAbstractFile[]) => {
         return [...children].sort((a, b) => {
             const aIsFolder = a instanceof TFolder;
@@ -83,32 +119,70 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         });
     }, [app]);
 
-    const refresh = () => {
-        if (currentProject) setRootChildren(sortChildren(currentProject.children));
+    const refresh = useCallback(() => {
+        const current = currentProjectRef.current;
+        if (current) setRootChildren(sortChildren(current.children));
         else setRootChildren([]);
         setFileSystemVersion(v => v + 1);
-    };
+    }, [sortChildren]);
 
-    useEffect(() => { loadProjects(); }, []);
+    // --- CRITICAL FIX: Trigger View Refresh when Project Changes ---
     useEffect(() => {
         refresh();
+    }, [currentProject, refresh]);
+
+    // --- Initial Load & Listeners ---
+    useEffect(() => {
+        loadProjects();
+
+        const handleResolved = () => { loadProjects(); refresh(); };
+        const handleCreate = () => { loadProjects(); refresh(); };
+        
+        const handleFileOpen = (file: TFile | null) => {
+            setActiveFile(file);
+            
+            if (file) {
+                // Prevent switching project if we just refocused the same file
+                if (file.path !== lastProcessedActivePath.current) {
+                    const proj = projectManager.getProjectForFile(file);
+                    // Only auto-switch if the file belongs to a known project
+                    // AND if the project is different from current
+                    if (proj && proj.path !== currentProjectRef.current?.path) {
+                        setCurrentProject(proj);
+                    }
+                    lastProcessedActivePath.current = file.path;
+                }
+            } else {
+                lastProcessedActivePath.current = null;
+            }
+        };
+
         const events = [
-            app.metadataCache.on('resolved', () => { loadProjects(); refresh(); }),
+            app.metadataCache.on('resolved', handleResolved),
             app.metadataCache.on('changed', refresh),
             app.vault.on('modify', refresh),
-            app.vault.on('create', () => { loadProjects(); refresh(); }),
+            app.vault.on('create', handleCreate),
             app.vault.on('delete', refresh),
             app.vault.on('rename', refresh),
-            app.workspace.on('file-open', (file) => {
-                setActiveFile(file);
-                if (file) {
-                    const proj = projectManager.getProjectForFile(file);
-                    if (proj && proj.path !== currentProject?.path) setCurrentProject(proj);
-                }
-            })
+            app.workspace.on('file-open', handleFileOpen)
         ];
         return () => events.forEach(ref => app.vault.offref(ref as any));
-    }, [app, currentProject]);
+    }, [app, projectManager, loadProjects, refresh]);
+
+    // --- Dashboard Navigation ---
+    const openDashboard = async () => {
+        const { workspace } = app;
+        let leaf: WorkspaceLeaf | null = null;
+        const leaves = workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+        
+        if (leaves.length > 0) {
+            leaf = leaves[0];
+            workspace.revealLeaf(leaf);
+        } else {
+            leaf = workspace.getLeaf('tab'); 
+            await leaf.setViewState({ type: VIEW_TYPE_DASHBOARD, active: true });
+        }
+    };
 
     // --- Content Search Logic ---
     useEffect(() => {
@@ -144,7 +218,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         }, 500); 
 
         return () => clearTimeout(delayDebounceFn);
-    }, [contentQuery, currentProject]);
+    }, [contentQuery, currentProject, app.vault]);
 
     const getAllFilesRecursively = (folder: TFolder): TFile[] => {
         let files: TFile[] = [];
@@ -224,17 +298,13 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     };
 
     // --- Keyboard Navigation Logic ---
-
-    // Helper to flatten visible tree for keyboard navigation
     const getFlattenedVisibleNodes = useCallback((): TAbstractFile[] => {
         const flatten = (nodes: TAbstractFile[]): TAbstractFile[] => {
             let result: TAbstractFile[] = [];
             const sorted = sortChildren(nodes);
             
             for (const node of sorted) {
-                // Apply Name filter if exists
                 if (nameFilter && !node.name.toLowerCase().includes(nameFilter.toLowerCase())) {
-                    // If folder, check children before skipping
                     if (node instanceof TFolder) {
                         const childMatches = flatten(node.children);
                         if (childMatches.length > 0) {
@@ -248,7 +318,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 result.push(node);
                 
                 if (node instanceof TFolder) {
-                    // If filtering, always expand. If not filtering, check expanded state.
                     if (nameFilter || expandedPaths.has(node.path)) {
                         result = result.concat(flatten(node.children));
                     }
@@ -261,8 +330,8 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     }, [currentProject, expandedPaths, nameFilter, sortChildren]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (contentQuery) return; // Disable tree nav during full search
-        if (e.target instanceof HTMLInputElement) return; // Don't hijack input typing
+        if (contentQuery) return;
+        if (e.target instanceof HTMLInputElement) return;
 
         const visibleNodes = getFlattenedVisibleNodes();
         if (visibleNodes.length === 0) return;
@@ -290,7 +359,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                         if (!expandedPaths.has(item.path)) {
                             toggleExpansion(item.path);
                         } else {
-                            // If already expanded, move down
                             nextIndex = Math.min(visibleNodes.length - 1, currentIndex + 1);
                         }
                     }
@@ -303,7 +371,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                     if (item instanceof TFolder && expandedPaths.has(item.path)) {
                         toggleExpansion(item.path);
                     } else if (item.parent && item.parent.path !== currentProject?.path) {
-                        // Move to parent
                         const parentIndex = visibleNodes.findIndex(n => n.path === item.parent?.path);
                         if (parentIndex !== -1) nextIndex = parentIndex;
                     }
@@ -319,29 +386,17 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                         toggleExpansion(item.path);
                     }
                 }
-                return; // Don't trigger selection update on enter only
+                return;
             default:
                 return;
         }
 
         if (nextIndex !== currentIndex && visibleNodes[nextIndex]) {
             const target = visibleNodes[nextIndex];
-            
-            // Update selection
             const newSelection = new Set<string>();
-            if (e.shiftKey) {
-                // Simple shift selection not implemented for keyboard list logic here, 
-                // falling back to single select for navigation safety
-                newSelection.add(target.path); 
-            } else {
-                newSelection.add(target.path);
-            }
-            
+            newSelection.add(target.path);
             setSelectedPaths(newSelection);
             setLastSelectedPath(target.path);
-
-            // Scroll into view logic would go here (requires refs to nodes)
-            // A simple hack is to rely on the DOM id if set, or let React handle updates
         }
     };
 
@@ -429,20 +484,8 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 });
 
                 await Promise.all(updatePromises);
-                triggerExternalCommand("Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.");
+                (app as any).workspace.trigger('novelist:sort-update');
             }
-        }
-    };
-
-    const triggerExternalCommand = (name: string) => {
-        // @ts-ignore
-        const commands = app.commands;
-        // @ts-ignore
-        const commandsList = Object.values(commands.commands);
-        const foundCommand = commandsList.find((cmd: any) => cmd.name === name);
-        if(foundCommand) {
-            // @ts-ignore
-            commands.executeCommandById((foundCommand as any).id);
         }
     };
 
@@ -465,7 +508,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     };
 
     const handleSearchClick = () => {
-        // Focus the search input
         const searchInput = document.querySelector('.novelist-binder-filter input.has-icon') as HTMLInputElement;
         if (searchInput) searchInput.focus();
     };
@@ -513,7 +555,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 </div>
 
                 <div className="novelist-binder-actions">
-                    <button onClick={() => triggerExternalCommand('Open Project Dashboard')} title="Open Project Dashboard"><LayoutDashboard size={16} /></button>
+                    <button onClick={openDashboard} title="Open Project Dashboard"><LayoutDashboard size={16} /></button>
                     <button onClick={handleSearchClick} title="Search in Project Content" style={{marginRight: 5}}><Search size={16} /></button>
                     <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--background-modifier-border)', margin: '0 5px' }}></div>
                     <button onClick={() => currentProject && projectManager.createNewItem(currentProject, 'file')} title="New Document"><FilePlus size={16} /></button>
@@ -567,8 +609,8 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                                 selectedPaths={selectedPaths}
                                 onNodeClick={handleNodeClick}
                                 filterQuery={nameFilter}
-                                expandedPaths={expandedPaths} // Pass expanded state
-                                onToggleExpand={toggleExpansion} // Pass toggler
+                                expandedPaths={expandedPaths}
+                                onToggleExpand={toggleExpansion}
                             />
                         ))}
                     </SortableContext>
