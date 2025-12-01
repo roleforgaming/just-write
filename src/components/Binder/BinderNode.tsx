@@ -141,7 +141,11 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         }
 
         menu.addSeparator();
-        app.workspace.trigger("file-menu", menu, item, "file-explorer", app.workspace.getLeaf(false));
+        
+        // Fix: Use getMostRecentLeaf() instead of getLeaf(false) to avoid unwanted creation of new tabs
+        const leaf = app.workspace.getMostRecentLeaf();
+        app.workspace.trigger("file-menu", menu, item, "file-explorer", leaf);
+        
         menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
     };
 

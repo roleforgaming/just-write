@@ -265,6 +265,19 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     // --- Selection Logic ---
     const handleNodeClick = useCallback((e: React.MouseEvent, file: TAbstractFile) => {
         e.stopPropagation();
+        
+        // Guard: Only allow Left Click (button 0) to trigger selection/opening logic
+        if (e.button !== 0) return;
+
+        // UX Improvement: Shift + Ctrl + Click = Open in New Tab
+        if (e.shiftKey && (e.metaKey || e.ctrlKey)) {
+            if (file instanceof TFile) {
+                // 'tab' ensures a new tab is created
+                app.workspace.getLeaf('tab').openFile(file);
+            }
+            return;
+        }
+
         selectNode(file, e.shiftKey, e.metaKey || e.ctrlKey);
     }, [selectedPaths, lastSelectedPath, app]);
 
