@@ -134,12 +134,22 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
     const viewRef = useRef<EditorView | null>(null);
     const modelRef = useRef<ScriveningsModel>(new ScriveningsModel(app, folder));
     const isSavingRef = useRef(false);
+    
+    // Track the currently focused file to prevent excessive event firing
+    const lastActivePathRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!editorRef.current) return;
 
         const init = async () => {
             const text = await modelRef.current.load();
+            
+            // Set initial active file to first section
+            if (modelRef.current.sections.length > 0) {
+                const firstFile = modelRef.current.sections[0].file;
+                lastActivePathRef.current = firstFile.path;
+                (app.workspace as any).trigger('novelist:select-file', firstFile);
+            }
 
             const state = EditorState.create({
                 doc: text,
@@ -176,10 +186,16 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                     }),
 
                     EditorView.updateListener.of((update) => {
+                        // 1. Handle Autosave
                         if (update.docChanged) {
                             if (!update.transactions.some(tr => tr.annotation(Transaction.userEvent) === "sync")) {
                                 handleSave(update.state.doc.toString());
                             }
+                        }
+
+                        // 2. Handle Inspector Sync (Detect which file cursor is in)
+                        if (update.selectionSet || update.docChanged) {
+                            detectActiveFile(update.state);
                         }
                     })
                 ]
@@ -190,6 +206,42 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
         };
 
         init();
+
+        // --- Logic to detect file based on cursor position ---
+        const detectActiveFile = (state: EditorState) => {
+            const pos = state.selection.main.head;
+            const docString = state.doc.toString();
+            
+            // Regex matches the tag strictly. We do NOT want to consume newlines here,
+            // because if we do, a cursor placed on a newline immediately after the header
+            // would be considered "inside" the separator and thus belonging to the PREVIOUS section.
+            const regex = /<!-- SC_BREAK -->/g;
+            const matches = [...docString.matchAll(regex)];
+
+            let sectionIndex = 0;
+
+            for (let i = 0; i < matches.length; i++) {
+                const match = matches[i];
+                const matchEnd = match.index! + match[0].length;
+                
+                // If cursor is past the end of this separator, it belongs to the *next* section
+                if (pos >= matchEnd) {
+                    sectionIndex = i + 1;
+                } else {
+                    // If cursor is before this match, we found our section (stay at current index)
+                    // If cursor is INSIDE the match, we usually consider it part of the previous section until fully crossed
+                    break;
+                }
+            }
+
+            const activeSection = modelRef.current.sections[sectionIndex];
+            
+            if (activeSection && activeSection.file.path !== lastActivePathRef.current) {
+                lastActivePathRef.current = activeSection.file.path;
+                // Trigger global event that Inspector listens to
+                (app.workspace as any).trigger('novelist:select-file', activeSection.file);
+            }
+        };
 
         // --- Live Sync Listener ---
         const onVaultModify = async (file: TAbstractFile) => {
