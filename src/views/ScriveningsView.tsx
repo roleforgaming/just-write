@@ -1,8 +1,8 @@
-import { ItemView, WorkspaceLeaf, TFolder, TFile } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFolder } from 'obsidian';
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { ScriveningsSection } from '../components/Scrivenings/ScriveningsSection';
-import { getRank } from '../utils/metadata';
+// Ensure this path matches where you saved the file
+import { SeamlessEditor } from '../components/Scrivenings/SeamlessEditor';
 
 export const VIEW_TYPE_SCRIVENINGS = "novelist-scrivenings";
 
@@ -15,7 +15,7 @@ export class ScriveningsView extends ItemView {
     }
 
     getViewType() { return VIEW_TYPE_SCRIVENINGS; }
-    getDisplayText() { return this.folder ? this.folder.name : "Scrivenings"; }
+    getDisplayText() { return this.folder ? `Manuscript: ${this.folder.name}` : "Scrivenings"; }
     getIcon() { return "scroll-text"; }
 
     async setFolder(folder: TFolder) {
@@ -28,22 +28,26 @@ export class ScriveningsView extends ItemView {
     }
 
     renderReact() {
-        if (!this.folder) return;
-
-        const files = this.folder.children
-            .filter((f): f is TFile => f instanceof TFile && f.extension === 'md')
-            .sort((a, b) => getRank(this.app, a) - getRank(this.app, b));
+        // Handle case where folder isn't set yet
+        if (!this.folder) {
+            this.root?.render(
+                <div style={{
+                    display: 'flex', 
+                    height: '100%', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    color: 'var(--text-muted)',
+                    fontStyle: 'italic'
+                }}>
+                    Select a folder to view Scrivenings
+                </div>
+            );
+            return;
+        }
 
         this.root?.render(
-            <div className="scrivenings-container">
-                {files.map(file => (
-                    <ScriveningsSection 
-                        key={file.path} 
-                        app={this.app} 
-                        file={file} 
-                        component={this} 
-                    />
-                ))}
+            <div className="novelist-scrivenings-wrapper" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
+                <SeamlessEditor app={this.app} folder={this.folder} />
             </div>
         );
     }
