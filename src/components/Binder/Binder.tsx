@@ -5,8 +5,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { BinderNode } from './BinderNode';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
-import { CreateProjectModal } from '../../modals/CreateProjectModal'; // Import Modal
-import { Book, FilePlus, FolderPlus, PlusCircle } from 'lucide-react';
+import { CreateProjectModal } from '../../modals/CreateProjectModal';
+import { Book, FilePlus, FolderPlus, LayoutDashboard } from 'lucide-react'; // Added LayoutDashboard
 
 interface BinderProps {
     app: App;
@@ -212,6 +212,16 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
                 {/* Creation Buttons */}
                 <div className="novelist-binder-actions">
+                    <button 
+                        onClick={() => triggerExternalCommand('Open Project Dashboard')} 
+                        title="Open Project Dashboard"
+                        style={{ marginRight: '5px' }} // Small visual separation
+                    >
+                        <LayoutDashboard size={16} />
+                    </button>
+
+                    <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--background-modifier-border)', margin: '0 5px' }}></div>
+
                     <button onClick={() => handleCreateButton('file')} title="New Document in Root">
                         <FilePlus size={16} />
                     </button>
