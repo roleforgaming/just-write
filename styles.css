@@ -870,11 +870,12 @@ body {
     color: var(--text-muted);
     margin: 0 0 15px 0;
     display: -webkit-box;
-    -webkit-line-clamp: 3; /* Limit text lines */
+    -webkit-line-clamp: 3;
+    /* Added standard property if valid in your environment, otherwise ignore warning */
+    line-clamp: 3; 
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
-
 .novelist-card-tags {
     display: flex;
     gap: 5px;
@@ -982,3 +983,108 @@ body {
     border-color: var(--interactive-accent);
     box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
 }
+
+/* --- View Switcher --- */
+.novelist-view-switcher {
+    display: flex;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.novelist-view-switcher button {
+    background: transparent;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+}
+
+.novelist-view-switcher button:hover {
+    color: var(--text-normal);
+}
+
+.novelist-view-switcher button.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* --- List View Table --- */
+.novelist-list-container {
+    overflow-x: auto;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+}
+
+.novelist-project-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.novelist-project-table th {
+    text-align: left;
+    padding: 12px 15px;
+    border-bottom: 2px solid var(--background-modifier-border);
+    color: var(--text-muted);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.novelist-project-table th:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.novelist-project-table td {
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    color: var(--text-normal);
+}
+
+.novelist-project-table tr.clickable-row {
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.novelist-project-table tr.clickable-row:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.novelist-project-table tr:last-child td {
+    border-bottom: none;
+}
+
+.novelist-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.novelist-icon-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--interactive-accent);
+}
+
+.status-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.85em;
+    font-weight: 600;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+.status-in-progress { background: rgba(var(--interactive-accent-rgb), 0.15); color: var(--interactive-accent); }
+.status-completed { background: rgba(var(--color-green-rgb), 0.15); color: var(--color-green); }
+.status-planning { background: var(--background-secondary); }
+

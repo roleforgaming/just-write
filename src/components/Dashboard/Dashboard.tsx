@@ -1,31 +1,52 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { App, TFolder } from 'obsidian';
+import { App } from 'obsidian';
 import { ProjectManager } from '../../utils/projectManager';
 import { CreateProjectModal } from '../../modals/CreateProjectModal';
 import { ProjectCard } from './ProjectCard';
-import { Plus, ChevronDown, ChevronRight, Filter, ArrowUpDown } from 'lucide-react';
+import { ProjectList } from './ProjectList';
+import { Plus, ChevronDown, ChevronRight, Filter, ArrowUpDown, LayoutGrid, List } from 'lucide-react';
 
 interface DashboardProps {
     app: App;
 }
 
+type ViewMode = 'grid' | 'list';
+type SortKey = 'modified' | 'created' | 'name' | 'wordCount' | 'status';
+
 export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
     const [projects, setProjects] = useState<any[]>([]);
     const [showArchived, setShowArchived] = useState(false);
     
+    // View State
+    const [viewMode, setViewMode] = useState<ViewMode>('grid');
+
     // Sorting and Filtering State
     const [filterStatus, setFilterStatus] = useState<string>('All');
-    const [sortType, setSortType] = useState<'modified' | 'name'>('modified');
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
+        key: 'modified', 
+        direction: 'desc' 
+    });
+
+    // Word Counts Cache
+    const [wordCounts, setWordCounts] = useState<Record<string, number>>({});
 
     const pm = new ProjectManager(app);
 
-    const load = () => {
+    const load = async () => {
         const folders = pm.getAllProjects();
         const data = folders.map(f => ({
             folder: f,
             meta: pm.getProjectMetadata(f)
         })).filter(p => p.meta !== null);
         setProjects(data);
+
+        // Calculate word counts asynchronously
+        const counts: Record<string, number> = {};
+        for (const p of data) {
+            const count = await pm.getProjectWordCount(p.folder);
+            counts[p.folder.path] = count;
+        }
+        setWordCounts(counts);
     };
 
     useEffect(() => {
@@ -40,29 +61,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
         return () => events.forEach(e => app.vault.offref(e));
     }, []);
 
-    // Derived Logic: Sort and Filter
-    const activeProjects = useMemo(() => {
-        let filtered = projects.filter(p => !p.meta.isArchived);
+    const handleSort = (key: string) => {
+        setSortConfig(prev => ({
+            key: key as SortKey,
+            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
 
-        // 1. Filter by Status
+    const processedProjects = useMemo(() => {
+        let filtered = [...projects];
+
         if (filterStatus !== 'All') {
             filtered = filtered.filter(p => p.meta.status === filterStatus);
         }
 
-        // 2. Sort
+        if (!showArchived) {
+            filtered = filtered.filter(p => !p.meta.isArchived);
+        }
+
         return filtered.sort((a, b) => {
-            if (sortType === 'name') {
-                return a.meta.name.localeCompare(b.meta.name);
-            } else {
-                // Default: Modified (Newest first)
-                return b.meta.lastModified - a.meta.lastModified;
+            const dir = sortConfig.direction === 'asc' ? 1 : -1;
+            
+            switch (sortConfig.key) {
+                case 'name':
+                    return a.meta.name.localeCompare(b.meta.name) * dir;
+                case 'status':
+                    return a.meta.status.localeCompare(b.meta.status) * dir;
+                case 'wordCount':
+                    const wa = wordCounts[a.folder.path] || 0;
+                    const wb = wordCounts[b.folder.path] || 0;
+                    return (wa - wb) * dir;
+                case 'created':
+                    return (a.meta.createdTime - b.meta.createdTime) * dir;
+                case 'modified':
+                default:
+                    return (a.meta.lastModified - b.meta.lastModified) * dir;
             }
         });
-    }, [projects, filterStatus, sortType]);
-
-    const archivedProjects = useMemo(() => {
-        return projects.filter(p => p.meta.isArchived).sort((a, b) => b.meta.lastModified - a.meta.lastModified);
-    }, [projects]);
+    }, [projects, filterStatus, sortConfig, wordCounts, showArchived]);
 
     const handleCreate = () => {
         new CreateProjectModal(app, () => load()).open();
@@ -72,12 +108,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
         <div className="novelist-dashboard">
             <div className="novelist-dashboard-header">
                 <h1>My Projects</h1>
-                <button className="novelist-create-btn" onClick={handleCreate}>
-                    <Plus size={18} /> New Project
-                </button>
+                <div style={{display:'flex', gap: 10}}>
+                    <div className="novelist-view-switcher">
+                        <button 
+                            className={viewMode === 'grid' ? 'is-active' : ''} 
+                            onClick={() => setViewMode('grid')} 
+                            title="Grid View"
+                        >
+                            <LayoutGrid size={16} />
+                        </button>
+                        <button 
+                            className={viewMode === 'list' ? 'is-active' : ''} 
+                            onClick={() => setViewMode('list')} 
+                            title="List View"
+                        >
+                            <List size={16} />
+                        </button>
+                    </div>
+                    <button className="novelist-create-btn" onClick={handleCreate}>
+                        <Plus size={18} /> New Project
+                    </button>
+                </div>
             </div>
 
-            {/* Toolbar: Filter & Sort */}
             <div className="novelist-dashboard-toolbar">
                 <div className="novelist-toolbar-group">
                     <Filter size={14} className="toolbar-icon" />
@@ -96,40 +149,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
                 <div className="novelist-toolbar-group">
                     <ArrowUpDown size={14} className="toolbar-icon" />
                     <select 
-                        value={sortType} 
-                        onChange={(e) => setSortType(e.target.value as any)}
+                        value={sortConfig.key} 
+                        onChange={(e) => setSortConfig({ key: e.target.value as any, direction: 'desc' })}
                         className="novelist-dashboard-select"
                     >
                         <option value="modified">Last Modified</option>
+                        <option value="created">Date Created</option>
                         <option value="name">Project Name</option>
+                        <option value="wordCount">Word Count</option>
                     </select>
                 </div>
             </div>
 
-            {/* Active Section */}
-            <div className="novelist-section-title">Active Projects ({activeProjects.length})</div>
-            <div className="novelist-project-grid">
-                {activeProjects.map(p => (
-                    <ProjectCard key={p.folder.path} app={app} folder={p.folder} meta={p.meta} />
-                ))}
-                
-                {/* Empty State / Create */}
-                {activeProjects.length === 0 && filterStatus === 'All' && (
-                    <div className="novelist-empty-state-card" onClick={handleCreate}>
-                        <Plus size={40} />
-                        <p>Create your first novel</p>
+            {viewMode === 'grid' && (
+                <>
+                    <div className="novelist-section-title">Projects ({processedProjects.length})</div>
+                    <div className="novelist-project-grid">
+                        {processedProjects.map(p => (
+                            <ProjectCard key={p.folder.path} app={app} folder={p.folder} meta={p.meta} />
+                        ))}
+                        {processedProjects.length === 0 && (
+                            <div className="novelist-empty-state-card" onClick={handleCreate}>
+                                <Plus size={40} />
+                                <p>Create your first novel</p>
+                            </div>
+                        )}
                     </div>
-                )}
+                </>
+            )}
 
-                {activeProjects.length === 0 && filterStatus !== 'All' && (
-                     <div style={{color: 'var(--text-muted)', fontStyle: 'italic', gridColumn: '1 / -1'}}>
-                        No projects found with status "{filterStatus}".
-                     </div>
-                )}
-            </div>
+            {viewMode === 'list' && (
+                <ProjectList 
+                    app={app} 
+                    projects={processedProjects} 
+                    onSort={handleSort}
+                    sortConfig={sortConfig}
+                    wordCounts={wordCounts}
+                />
+            )}
 
-            {/* Archive Section */}
-            {archivedProjects.length > 0 && (
+            {projects.some(p => p.meta.isArchived) && (
                 <div className="novelist-archive-section">
                     <div 
                         className="novelist-section-title clickable" 
@@ -137,14 +196,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
                         style={{marginTop: 40}}
                     >
                         {showArchived ? <ChevronDown size={16}/> : <ChevronRight size={16}/>} 
-                        Archived Projects ({archivedProjects.length})
+                        Archived Projects
                     </div>
                     
                     {showArchived && (
-                        <div className="novelist-project-grid">
-                            {archivedProjects.map(p => (
-                                <ProjectCard key={p.folder.path} app={app} folder={p.folder} meta={p.meta} />
-                            ))}
+                        <div className={viewMode === 'grid' ? "novelist-project-grid" : ""}>
+                            {viewMode === 'grid' ? (
+                                projects.filter(p => p.meta.isArchived).map(p => (
+                                    <ProjectCard key={p.folder.path} app={app} folder={p.folder} meta={p.meta} />
+                                ))
+                            ) : (
+                                <ProjectList 
+                                    app={app} 
+                                    projects={projects.filter(p => p.meta.isArchived)}
+                                    onSort={handleSort}
+                                    sortConfig={sortConfig}
+                                    wordCounts={wordCounts}
+                                />
+                            )}
                         </div>
                     )}
                 </div>

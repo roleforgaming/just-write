@@ -11,8 +11,6 @@ export class ProjectManager {
         this.app = app;
     }
 
-    // ... [Previous methods: isProject, getProjectForFile, getAllProjects, createProject, etc. remain unchanged] ...
-
     isProject(folder: TFolder): boolean {
         const markerFile = folder.children.find(
             c => c.name === PROJECT_MARKER_FILE && c instanceof TFile
@@ -223,7 +221,28 @@ notes: ""
         }
     }
 
-    // --- UPDATED METHODS ---
+    // --- NEW: Word Count Logic ---
+    async getProjectWordCount(folder: TFolder): Promise<number> {
+        let count = 0;
+        
+        const countWords = async (file: TAbstractFile) => {
+            if (file instanceof TFile && file.extension === 'md') {
+                const content = await this.app.vault.read(file);
+                const words = content.match(/\S+/g);
+                if (words) count += words.length;
+            } else if (file instanceof TFolder) {
+                for (const child of file.children) {
+                    await countWords(child);
+                }
+            }
+        };
+
+        const manuscript = folder.children.find(c => c.name === 'Manuscript' && c instanceof TFolder);
+        const target = manuscript instanceof TFolder ? manuscript : folder;
+
+        await countWords(target);
+        return count;
+    }
 
     getProjectMetadata(folder: TFolder) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
@@ -232,9 +251,6 @@ notes: ""
         const cache = this.app.metadataCache.getFileCache(marker);
         const fm = cache?.frontmatter || {};
         
-        // Capture Last Modified Time from the file system
-        const lastModified = marker.stat.mtime;
-
         return {
             name: folder.name,
             path: folder.path,
@@ -242,7 +258,8 @@ notes: ""
             tags: fm.tags || [],
             description: fm.description || "No description provided.",
             isArchived: fm.archived === true || fm.status === 'Archived',
-            lastModified: lastModified // Added field
+            lastModified: marker.stat.mtime,
+            createdTime: marker.stat.ctime
         };
     }
 
@@ -264,7 +281,7 @@ notes: ""
         try {
             await this.app.fileManager.renameFile(folder, newPath);
         } catch (e) {
-            new Notice("Could not rename project. Name might behave exist.");
+            new Notice("Could not rename project. Name might already exist.");
         }
     }
 }
