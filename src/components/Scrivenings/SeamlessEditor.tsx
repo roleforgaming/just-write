@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
 import { ScriveningsModel } from './ScriveningsModel';
+import matter from 'gray-matter'; 
 
 // CodeMirror Imports
 import { EditorState, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
@@ -80,6 +81,7 @@ function buildDecorations(state: EditorState, model: ScriveningsModel): Decorati
         let startReplace = pos;
         let endReplace = pos + marker.length;
 
+        // Visual adjustment to hide surrounding newlines
         if (startReplace > 0 && docString[startReplace - 1] === '\n') {
             startReplace--;
         }
@@ -235,7 +237,6 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
 
         // --- Logic for Sticky Header (Based on Visual Top) ---
         const updateStickyHeader = (view: EditorView) => {
-            // FIX: Use lineBlockAtHeight instead of posAtHeight
             const topPos = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 10).from;
             const docString = view.state.doc.toString();
 
@@ -245,7 +246,6 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
 
             for (let i = 0; i < matches.length; i++) {
                 const matchIndex = matches[i].index!;
-                // If the top visual position is past this break, we are in the next section
                 if (topPos > matchIndex) {
                     sectionIndex = i + 1;
                 } else {
@@ -268,7 +268,10 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             if (sectionIndex === -1) return;
 
             const rawContent = await app.vault.read(file);
-            const newBody = rawContent.replace(/^---\n[\s\S]*?\n---\n/, "");
+            
+            // USE GRAY-MATTER for robust parsing
+            const parsed = matter(rawContent);
+            const newBody = parsed.content;
             
             if (!viewRef.current) return;
             const currentDoc = viewRef.current.state.doc.toString();

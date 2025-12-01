@@ -1,10 +1,11 @@
 import { App, TFile, TFolder, Notice } from 'obsidian';
 import { getRank } from '../../utils/metadata';
+import matter from 'gray-matter';
 
 export interface FileSection {
     file: TFile;
     content: string;
-    frontmatter: string;
+    frontmatter: string; // Contains the full fence --- ... --- and trailing newlines
     originalPath: string;
 }
 
@@ -31,14 +32,22 @@ export class ScriveningsModel {
 
         for (const file of files) {
             const raw = await this.app.vault.read(file);
-            const fmMatch = raw.match(/^---\n[\s\S]*?\n---\n/);
-            const frontmatter = fmMatch ? fmMatch[0] : "";
-            const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
+            
+            // USE GRAY-MATTER
+            const parsed = matter(raw);
+            
+            // We separate content from frontmatter.
+            // parsed.content is the body. 
+            // To ensure we preserve exact formatting of the frontmatter (including comments and 
+            // specific newline spacing after the fence), we slice the original string.
+            // This is safer than re-serializing the yaml which would lose comments.
+            const body = parsed.content;
+            const frontmatterBlock = raw.slice(0, raw.length - body.length);
 
             this.sections.push({
                 file,
                 content: body,
-                frontmatter,
+                frontmatter: frontmatterBlock,
                 originalPath: file.path
             });
 
@@ -52,7 +61,6 @@ export class ScriveningsModel {
         // ROBUST SPLIT LOGIC:
         // Use Regex to find the marker <!-- SC_BREAK -->
         // (?:\r?\n)* matches zero or more newlines before and after.
-        // This ensures that if the user deletes the blank lines, we still split correctly.
         const parts = fullText.split(/(?:\r?\n)*<!-- SC_BREAK -->(?:\r?\n)*/);
 
         // Safety Check
@@ -67,6 +75,7 @@ export class ScriveningsModel {
             
             // Only write to disk if content actually changed
             if (newContent !== section.content) {
+                // Recombine the preserved frontmatter (with comments) + new body
                 const fileData = section.frontmatter + newContent;
                 await this.app.vault.modify(section.file, fileData);
                 section.content = newContent; // Update local cache
