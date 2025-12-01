@@ -221,7 +221,6 @@ notes: ""
         }
     }
 
-    // --- NEW: Word Count Logic ---
     async getProjectWordCount(folder: TFolder): Promise<number> {
         let count = 0;
         
@@ -280,7 +279,7 @@ notes: ""
         const newPath = normalizePath(`${folder.parent?.path || ''}/${newName}`);
         try {
             await this.app.fileManager.renameFile(folder, newPath);
-        } catch (e) {
+        } catch {
             new Notice("Could not rename project. Name might already exist.");
         }
     }
