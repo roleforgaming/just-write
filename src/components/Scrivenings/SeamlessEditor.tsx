@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
 import { ScriveningsModel } from './ScriveningsModel';
 
@@ -9,7 +9,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data"; 
 
-// --- 1. The Separator Widget ---
+// --- 1. The Separator Widget (Unchanged) ---
 class HeaderWidget extends WidgetType {
     constructor(readonly title: string) { super(); }
 
@@ -23,7 +23,7 @@ class HeaderWidget extends WidgetType {
     ignoreEvent() { return true; }
 }
 
-// --- 2. Change Filter (Protects the Separator Marker only) ---
+// --- 2. Change Filter (Unchanged) ---
 const protectSeparators = EditorState.changeFilter.of((tr: Transaction) => {
     if (!tr.docChanged) return true;
 
@@ -50,7 +50,7 @@ const protectSeparators = EditorState.changeFilter.of((tr: Transaction) => {
     return allow;
 });
 
-// --- 3. The Decorator Logic ---
+// --- 3. The Decorator Logic (Unchanged) ---
 function buildDecorations(state: EditorState, model: ScriveningsModel): DecorationSet {
     const builder = new RangeSetBuilder<Decoration>();
     const docString = state.doc.toString();
@@ -77,18 +77,13 @@ function buildDecorations(state: EditorState, model: ScriveningsModel): Decorati
         const nextFile = model.sections[index + 1]?.file;
         const title = nextFile ? nextFile.basename : "Section";
 
-        // SMART RANGE DETECTION:
-        // Only replace surrounding newlines IF they exist. 
-        // This ensures we don't eat text characters if the user deletes the blank lines.
         let startReplace = pos;
         let endReplace = pos + marker.length;
 
-        // Check char before
         if (startReplace > 0 && docString[startReplace - 1] === '\n') {
             startReplace--;
         }
 
-        // Check char after
         if (endReplace < docString.length && docString[endReplace] === '\n') {
             endReplace++;
         }
@@ -109,7 +104,7 @@ function buildDecorations(state: EditorState, model: ScriveningsModel): Decorati
     return builder.finish();
 }
 
-// --- 4. The StateField ---
+// --- 4. The StateField (Unchanged) ---
 const separatorField = (model: ScriveningsModel) => StateField.define<DecorationSet>({
     create(state) {
         return buildDecorations(state, model);
@@ -134,9 +129,10 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
     const viewRef = useRef<EditorView | null>(null);
     const modelRef = useRef<ScriveningsModel>(new ScriveningsModel(app, folder));
     const isSavingRef = useRef(false);
-    
-    // Track the currently focused file to prevent excessive event firing
     const lastActivePathRef = useRef<string | null>(null);
+
+    // New State for Sticky Header
+    const [stickyTitle, setStickyTitle] = useState<string>("");
 
     useEffect(() => {
         if (!editorRef.current) return;
@@ -144,10 +140,10 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
         const init = async () => {
             const text = await modelRef.current.load();
             
-            // Set initial active file to first section
             if (modelRef.current.sections.length > 0) {
                 const firstFile = modelRef.current.sections[0].file;
                 lastActivePathRef.current = firstFile.path;
+                setStickyTitle(firstFile.basename); // Init title
                 (app.workspace as any).trigger('novelist:select-file', firstFile);
             }
 
@@ -166,7 +162,7 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                     EditorView.theme({
                         "&": { height: "100%", fontSize: "var(--font-text-size)" },
                         ".cm-scroller": { fontFamily: "var(--font-text)" },
-                        ".cm-content": { paddingBottom: "200px", maxWidth: "800px", margin: "0 auto" },
+                        ".cm-content": { paddingBottom: "200px", maxWidth: "800px", margin: "0 auto", paddingTop: "40px" },
                         ".cm-gutters": { display: "none" },
                         ".cm-cursor, .cm-dropCursor": { 
                             borderLeftColor: "var(--caret-color, var(--text-normal)) !important" 
@@ -174,7 +170,7 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                         ".scrivenings-separator": {
                             display: "block",
                             borderTop: "1px dashed var(--background-modifier-border)",
-                            marginTop: "15px", 
+                            marginTop: "30px", 
                             marginBottom: "15px",
                             paddingTop: "5px",
                             color: "var(--text-muted)",
@@ -193,9 +189,14 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                             }
                         }
 
-                        // 2. Handle Inspector Sync (Detect which file cursor is in)
+                        // 2. Handle Inspector Sync (Cursor based)
                         if (update.selectionSet || update.docChanged) {
                             detectActiveFile(update.state);
+                        }
+
+                        // 3. Handle Sticky Header (Scroll/Viewport based)
+                        if (update.viewportChanged || update.docChanged) {
+                            updateStickyHeader(update.view);
                         }
                     })
                 ]
@@ -207,39 +208,54 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
 
         init();
 
-        // --- Logic to detect file based on cursor position ---
+        // --- Logic to detect file based on cursor position (For Inspector) ---
         const detectActiveFile = (state: EditorState) => {
             const pos = state.selection.main.head;
             const docString = state.doc.toString();
             
-            // Regex matches the tag strictly. We do NOT want to consume newlines here,
-            // because if we do, a cursor placed on a newline immediately after the header
-            // would be considered "inside" the separator and thus belonging to the PREVIOUS section.
             const regex = /<!-- SC_BREAK -->/g;
             const matches = [...docString.matchAll(regex)];
-
             let sectionIndex = 0;
 
             for (let i = 0; i < matches.length; i++) {
-                const match = matches[i];
-                const matchEnd = match.index! + match[0].length;
-                
-                // If cursor is past the end of this separator, it belongs to the *next* section
+                const matchEnd = matches[i].index! + matches[i][0].length;
                 if (pos >= matchEnd) {
                     sectionIndex = i + 1;
                 } else {
-                    // If cursor is before this match, we found our section (stay at current index)
-                    // If cursor is INSIDE the match, we usually consider it part of the previous section until fully crossed
                     break;
                 }
             }
 
             const activeSection = modelRef.current.sections[sectionIndex];
-            
             if (activeSection && activeSection.file.path !== lastActivePathRef.current) {
                 lastActivePathRef.current = activeSection.file.path;
-                // Trigger global event that Inspector listens to
                 (app.workspace as any).trigger('novelist:select-file', activeSection.file);
+            }
+        };
+
+        // --- Logic for Sticky Header (Based on Visual Top) ---
+        const updateStickyHeader = (view: EditorView) => {
+            // FIX: Use lineBlockAtHeight instead of posAtHeight
+            const topPos = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 10).from;
+            const docString = view.state.doc.toString();
+
+            const regex = /<!-- SC_BREAK -->/g;
+            const matches = [...docString.matchAll(regex)];
+            let sectionIndex = 0;
+
+            for (let i = 0; i < matches.length; i++) {
+                const matchIndex = matches[i].index!;
+                // If the top visual position is past this break, we are in the next section
+                if (topPos > matchIndex) {
+                    sectionIndex = i + 1;
+                } else {
+                    break;
+                }
+            }
+
+            const activeSection = modelRef.current.sections[sectionIndex];
+            if (activeSection) {
+                setStickyTitle(activeSection.file.basename);
             }
         };
 
@@ -257,7 +273,6 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             if (!viewRef.current) return;
             const currentDoc = viewRef.current.state.doc.toString();
             
-            // Use Regex to find ALL delimiters in the current document
             const regex = /(?:\r?\n)*<!-- SC_BREAK -->(?:\r?\n)*/g;
             const matches = [...currentDoc.matchAll(regex)];
 
@@ -265,21 +280,16 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             let endPos = currentDoc.length;
 
             if (sectionIndex === 0) {
-                // First section: starts at 0, ends at start of first match (if exists)
                 startPos = 0;
                 endPos = matches.length > 0 ? matches[0].index! : currentDoc.length;
             } else {
-                // Middle/Last section
                 const prevMatch = matches[sectionIndex - 1];
-                if (!prevMatch) return; // Sync fail (structure mismatch)
-                
+                if (!prevMatch) return; 
                 startPos = prevMatch.index! + prevMatch[0].length;
-                
                 const nextMatch = matches[sectionIndex];
                 endPos = nextMatch ? nextMatch.index! : currentDoc.length;
             }
 
-            // Extract what is currently in the editor for this section
             const currentEditorContent = currentDoc.slice(startPos, endPos);
 
             if (currentEditorContent !== newBody) {
@@ -309,5 +319,16 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
         }, 1000); 
     };
 
-    return <div ref={editorRef} style={{ height: '100%', overflow: 'hidden' }} />;
+    return (
+        <div style={{ position: 'relative', height: '100%' }}>
+            {/* STICKY HEADER OVERLAY */}
+            {stickyTitle && (
+                <div className="novelist-sticky-header">
+                    {stickyTitle}
+                </div>
+            )}
+            
+            <div ref={editorRef} style={{ height: '100%', overflow: 'hidden' }} />
+        </div>
+    );
 };

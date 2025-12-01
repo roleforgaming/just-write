@@ -1181,3 +1181,36 @@ body {
 .status-in-progress { background: rgba(var(--interactive-accent-rgb), 0.15); color: var(--interactive-accent); }
 .status-completed { background: rgba(var(--color-green-rgb), 0.15); color: var(--color-green); }
 .status-planning { background: var(--background-secondary); }
+
+.novelist-sticky-header {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    
+    background-color: rgba(var(--background-secondary-rgb), 0.85);
+    backdrop-filter: blur(8px); /* Blur background behind header */
+    -webkit-backdrop-filter: blur(8px);
+    
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--background-modifier-border);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    pointer-events: none; /* Allow clicking through to the text */
+    
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    white-space: nowrap;
+    max-width: 80%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Optional: Hide sticky header if window is very small */
+.scrivenings-wrapper {
+    position: relative;
+}
