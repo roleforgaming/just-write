@@ -204,10 +204,11 @@ body {
 }
 
 .novelist-inspector-container {
-    padding: 15px;
+    padding: 0; /* Updated for tabbed layout */
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    height: 100%;
+    gap: 0;
 }
 
 .novelist-label-header {
@@ -215,14 +216,20 @@ body {
     font-size: 0.8em;
     text-transform: uppercase;
     color: var(--text-muted);
+    margin-bottom: 4px;
 }
 
 .novelist-input, .novelist-textarea {
-    background: #1e2227;
-    border: 1px solid #181a1f;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
     width: 100%;
-    padding: 5px;
+    padding: 6px;
+    border-radius: 4px;
+}
+
+.novelist-group {
+    margin-bottom: 15px;
 }
 
 /* --- 4. Hide Inline Metadata (Scrivener Style) --- */
@@ -570,12 +577,14 @@ body {
 
 /* --- Inspector Tweaks --- */
 .novelist-inspector-title {
-    margin-top: 0;
-    margin-bottom: 15px;
+    margin: 15px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--background-modifier-border);
     font-size: 1.1em;
     text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* --- Corkboard Toolbar Additions --- */
@@ -1213,4 +1222,107 @@ body {
 /* Optional: Hide sticky header if window is very small */
 .scrivenings-wrapper {
     position: relative;
+}
+
+/* Inspector Tabs */
+.novelist-inspector-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 15px;
+    background-color: var(--background-primary);
+    border-radius: 4px 4px 0 0;
+}
+
+.novelist-inspector-tab {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.novelist-inspector-tab:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.novelist-inspector-tab.active {
+    color: var(--interactive-accent);
+    border-bottom-color: var(--interactive-accent);
+    background-color: var(--background-primary-alt);
+}
+
+.novelist-inspector-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    flex: 1;
+}
+
+/* Metadata Row Styles */
+.novelist-metadata-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.novelist-metadata-key {
+    flex: 1;
+    font-size: 0.85em;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.novelist-metadata-value.novelist-input {
+    flex: 2;
+    font-size: 0.9em;
+}
+
+/* Reuse button style */
+.novelist-icon-btn {
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+}
+
+.novelist-icon-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-error); /* Red for trash actions */
+}
+
+/* Layout fix for Inspector Container */
+.novelist-inspector-container {
+    padding: 0; /* Removed padding from container */
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Add padding back to specific children if needed */
+.novelist-inspector-title {
+    margin: 15px;
+}
+
+.novelist-inspector-content {
+    padding: 0 15px 15px 15px;
+    overflow-y: auto;
+}
+
+/* Fix height for notes tab */
+.novelist-textarea {
+    resize: vertical;
+    min-height: 80px;
 }
