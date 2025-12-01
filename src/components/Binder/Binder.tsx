@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { App, TFile, TAbstractFile, TFolder } from 'obsidian';
 import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors, DragStartEvent, DragOverlay, defaultDropAnimationSideEffects, DropAnimation } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -6,7 +6,7 @@ import { BinderNode } from './BinderNode';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
 import { CreateProjectModal } from '../../modals/CreateProjectModal';
-import { Book, FilePlus, FolderPlus, LayoutDashboard, FileText, X, Search } from 'lucide-react';
+import { Book, FilePlus, FolderPlus, LayoutDashboard, FileText, Search, X } from 'lucide-react';
 
 interface BinderProps {
     app: App;
@@ -23,6 +23,7 @@ interface ContentSearchResult {
 
 export const Binder: React.FC<BinderProps> = ({ app }) => {
     const projectManager = new ProjectManager(app);
+    const containerRef = useRef<HTMLDivElement>(null);
     
     const [currentProject, setCurrentProject] = useState<TFolder | null>(null);
     const [availableProjects, setAvailableProjects] = useState<TFolder[]>([]);
@@ -36,9 +37,10 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     const [contentResults, setContentResults] = useState<ContentSearchResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // Multi-Select State
+    // --- Selection & Expansion State ---
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
     const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
+    const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     
     // Drag State
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -59,7 +61,9 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         }
     };
 
-    const sortChildren = (children: TAbstractFile[]) => {
+    // Centralized sort function used by Binder and BinderNode (implicitly via rendering order)
+    // To ensure keyboard navigation matches visual order, this logic must be consistent.
+    const sortChildren = useCallback((children: TAbstractFile[]) => {
         return [...children].sort((a, b) => {
             const aIsFolder = a instanceof TFolder;
             const bIsFolder = b instanceof TFolder;
@@ -77,7 +81,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             }
             return getRank(app, a as TFile) - getRank(app, b as TFile);
         });
-    };
+    }, [app]);
 
     const refresh = () => {
         if (currentProject) setRootChildren(sortChildren(currentProject.children));
@@ -124,7 +128,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 
                 try {
                     const content = await app.vault.cachedRead(file);
-                    // Strip frontmatter
                     const contentBody = content.replace(/^---\n[\s\S]*?\n---\n/, '');
                     
                     const matches = findMatches(contentBody, contentQuery);
@@ -138,7 +141,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
             setContentResults(results);
             setIsSearching(false);
-        }, 500); // 500ms debounce
+        }, 500); 
 
         return () => clearTimeout(delayDebounceFn);
     }, [contentQuery, currentProject]);
@@ -154,7 +157,6 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
     const findMatches = (content: string, query: string) => {
         const matches = [];
-        // Escape regex special characters
         const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(escapedQuery, 'gi');
         let match;
@@ -162,14 +164,12 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         while ((match = regex.exec(content)) !== null) {
             const start = match.index;
             const end = start + match[0].length;
-            
-            // Get context (surrounding text)
             const contextStart = Math.max(0, start - 30);
             const contextEnd = Math.min(content.length, end + 30);
             const contextText = content.substring(contextStart, contextEnd);
             
             matches.push({ start, end, context: "..." + contextText + "..." });
-            if (matches.length >= 2) break; // Limit matches per file for sidebar view
+            if (matches.length >= 2) break; 
         }
         return matches;
     };
@@ -188,16 +188,19 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         );
     };
 
-    // --- Selection Logic (Multi-Select) ---
+    // --- Selection Logic ---
     const handleNodeClick = useCallback((e: React.MouseEvent, file: TAbstractFile) => {
         e.stopPropagation();
+        selectNode(file, e.shiftKey, e.metaKey || e.ctrlKey);
+    }, [selectedPaths, lastSelectedPath, app]);
 
+    const selectNode = (file: TAbstractFile, isShift: boolean, isCtrl: boolean) => {
         const path = file.path;
         const newSelection = new Set(selectedPaths);
 
-        if (e.shiftKey && lastSelectedPath) {
-            newSelection.add(path);
-        } else if (e.metaKey || e.ctrlKey) {
+        if (isShift && lastSelectedPath) {
+            newSelection.add(path); // Simplified range
+        } else if (isCtrl) {
             if (newSelection.has(path)) newSelection.delete(path);
             else newSelection.add(path);
         } else {
@@ -211,11 +214,140 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
         setSelectedPaths(newSelection);
         setLastSelectedPath(path);
-    }, [selectedPaths, lastSelectedPath, app]);
+    };
+
+    const toggleExpansion = (path: string) => {
+        const newExpanded = new Set(expandedPaths);
+        if (newExpanded.has(path)) newExpanded.delete(path);
+        else newExpanded.add(path);
+        setExpandedPaths(newExpanded);
+    };
+
+    // --- Keyboard Navigation Logic ---
+
+    // Helper to flatten visible tree for keyboard navigation
+    const getFlattenedVisibleNodes = useCallback((): TAbstractFile[] => {
+        const flatten = (nodes: TAbstractFile[]): TAbstractFile[] => {
+            let result: TAbstractFile[] = [];
+            const sorted = sortChildren(nodes);
+            
+            for (const node of sorted) {
+                // Apply Name filter if exists
+                if (nameFilter && !node.name.toLowerCase().includes(nameFilter.toLowerCase())) {
+                    // If folder, check children before skipping
+                    if (node instanceof TFolder) {
+                        const childMatches = flatten(node.children);
+                        if (childMatches.length > 0) {
+                            result.push(node);
+                            result = result.concat(childMatches);
+                        }
+                    }
+                    continue;
+                }
+
+                result.push(node);
+                
+                if (node instanceof TFolder) {
+                    // If filtering, always expand. If not filtering, check expanded state.
+                    if (nameFilter || expandedPaths.has(node.path)) {
+                        result = result.concat(flatten(node.children));
+                    }
+                }
+            }
+            return result;
+        };
+        
+        return currentProject ? flatten(currentProject.children) : [];
+    }, [currentProject, expandedPaths, nameFilter, sortChildren]);
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (contentQuery) return; // Disable tree nav during full search
+        if (e.target instanceof HTMLInputElement) return; // Don't hijack input typing
+
+        const visibleNodes = getFlattenedVisibleNodes();
+        if (visibleNodes.length === 0) return;
+
+        const currentIndex = lastSelectedPath 
+            ? visibleNodes.findIndex(n => n.path === lastSelectedPath) 
+            : -1;
+
+        let nextIndex = currentIndex;
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                nextIndex = Math.min(visibleNodes.length - 1, currentIndex + 1);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                nextIndex = Math.max(0, currentIndex - 1);
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (currentIndex >= 0) {
+                    const item = visibleNodes[currentIndex];
+                    if (item instanceof TFolder) {
+                        if (!expandedPaths.has(item.path)) {
+                            toggleExpansion(item.path);
+                        } else {
+                            // If already expanded, move down
+                            nextIndex = Math.min(visibleNodes.length - 1, currentIndex + 1);
+                        }
+                    }
+                }
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (currentIndex >= 0) {
+                    const item = visibleNodes[currentIndex];
+                    if (item instanceof TFolder && expandedPaths.has(item.path)) {
+                        toggleExpansion(item.path);
+                    } else if (item.parent && item.parent.path !== currentProject?.path) {
+                        // Move to parent
+                        const parentIndex = visibleNodes.findIndex(n => n.path === item.parent?.path);
+                        if (parentIndex !== -1) nextIndex = parentIndex;
+                    }
+                }
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (currentIndex >= 0) {
+                    const item = visibleNodes[currentIndex];
+                    if (item instanceof TFile) {
+                        app.workspace.getLeaf(false).openFile(item);
+                    } else if (item instanceof TFolder) {
+                        toggleExpansion(item.path);
+                    }
+                }
+                return; // Don't trigger selection update on enter only
+            default:
+                return;
+        }
+
+        if (nextIndex !== currentIndex && visibleNodes[nextIndex]) {
+            const target = visibleNodes[nextIndex];
+            
+            // Update selection
+            const newSelection = new Set<string>();
+            if (e.shiftKey) {
+                // Simple shift selection not implemented for keyboard list logic here, 
+                // falling back to single select for navigation safety
+                newSelection.add(target.path); 
+            } else {
+                newSelection.add(target.path);
+            }
+            
+            setSelectedPaths(newSelection);
+            setLastSelectedPath(target.path);
+
+            // Scroll into view logic would go here (requires refs to nodes)
+            // A simple hack is to rely on the DOM id if set, or let React handle updates
+        }
+    };
 
     // --- Drag & Drop Logic ---
     const handleDragStart = (event: DragStartEvent) => {
-        if (nameFilter || contentQuery) return; // Disable drag when filtering
+        if (nameFilter || contentQuery) return; 
         const { active } = event;
         setActiveDragId(active.id as string);
 
@@ -233,12 +365,10 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
         const activeId = active.id as string;
         const overId = over.id as string;
-
         const overItem = app.vault.getAbstractFileByPath(overId);
-        if (!overItem) return;
-
         const activeItem = app.vault.getAbstractFileByPath(activeId);
-        if (!activeItem) return;
+
+        if (!overItem || !activeItem) return;
 
         const itemsToMove = new Set<TAbstractFile>();
         if (selectedPaths.has(activeId)) {
@@ -334,8 +464,19 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
         }),
     };
 
+    const handleSearchClick = () => {
+        // Focus the search input
+        const searchInput = document.querySelector('.novelist-binder-filter input.has-icon') as HTMLInputElement;
+        if (searchInput) searchInput.focus();
+    };
+
     return (
-        <div className="novelist-binder-container">
+        <div 
+            className="novelist-binder-container" 
+            tabIndex={0} 
+            onKeyDown={handleKeyDown}
+            ref={containerRef}
+        >
             <div className="novelist-binder-header">
                 <div className="novelist-project-selector">
                     <Book size={16} />
@@ -373,6 +514,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
                 <div className="novelist-binder-actions">
                     <button onClick={() => triggerExternalCommand('Open Project Dashboard')} title="Open Project Dashboard"><LayoutDashboard size={16} /></button>
+                    <button onClick={handleSearchClick} title="Search in Project Content" style={{marginRight: 5}}><Search size={16} /></button>
                     <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--background-modifier-border)', margin: '0 5px' }}></div>
                     <button onClick={() => currentProject && projectManager.createNewItem(currentProject, 'file')} title="New Document"><FilePlus size={16} /></button>
                     <button onClick={() => currentProject && projectManager.createNewItem(currentProject, 'folder')} title="New Folder"><FolderPlus size={16} /></button>
@@ -424,7 +566,9 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                                 currentProject={currentProject}
                                 selectedPaths={selectedPaths}
                                 onNodeClick={handleNodeClick}
-                                filterQuery={nameFilter} // Pass Name Filter
+                                filterQuery={nameFilter}
+                                expandedPaths={expandedPaths} // Pass expanded state
+                                onToggleExpand={toggleExpansion} // Pass toggler
                             />
                         ))}
                     </SortableContext>

@@ -16,14 +16,16 @@ interface BinderNodeProps {
     currentProject: TFolder | null;
     selectedPaths: Set<string>;
     onNodeClick: (e: React.MouseEvent, file: TAbstractFile) => void;
-    filterQuery?: string; // Added prop
+    filterQuery?: string;
+    expandedPaths: Set<string>; // Lifted state
+    onToggleExpand: (path: string) => void; // Lifted toggler
 }
 
 export const BinderNode: React.FC<BinderNodeProps> = ({ 
     app, item, depth, activeFile, version, currentProject, 
-    selectedPaths, onNodeClick, filterQuery = ''
+    selectedPaths, onNodeClick, filterQuery = '',
+    expandedPaths, onToggleExpand
 }) => {
-    const [collapsed, setCollapsed] = useState(false);
     const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(item.name);
 
@@ -31,13 +33,13 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     const isFile = item instanceof TFile;
     const isActive = activeFile && activeFile.path === item.path;
     const isSelected = selectedPaths.has(item.path);
+    const isExpanded = expandedPaths.has(item.path); // Check lifted state
 
     const projectManager = new ProjectManager(app);
     const inTrash = projectManager.isInTrash(item);
     const isTrashFolder = currentProject && item.path === `${currentProject.path}/Trash`;
 
     // --- Filter Logic ---
-    // Function to recursively check if a node or its children matches the filter
     const matchesFilter = (node: TAbstractFile, query: string): boolean => {
         if (!query) return true;
         if (node.name.toLowerCase().includes(query.toLowerCase())) return true;
@@ -48,17 +50,15 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     };
 
     const isVisible = useMemo(() => matchesFilter(item, filterQuery), [item, filterQuery, version]);
-    const shouldExpand = useMemo(() => {
-        // If querying, expand if children contain match but I don't match directly (or do, keep structure)
-        if (!filterQuery || !isFolder) return false;
-        return (item as TFolder).children.some(child => matchesFilter(child, filterQuery));
-    }, [item, filterQuery, version]);
-
-    useEffect(() => {
-        if (filterQuery && shouldExpand) {
-            setCollapsed(false);
+    
+    // If filtering, force expansion if needed
+    const effectiveExpanded = useMemo(() => {
+        if (filterQuery) {
+             if (!isFolder) return false;
+             return (item as TFolder).children.some(child => matchesFilter(child, filterQuery));
         }
-    }, [filterQuery, shouldExpand]);
+        return isExpanded;
+    }, [isExpanded, filterQuery, item, version]);
 
     // --- Drag and Drop Logic ---
     const {
@@ -179,8 +179,11 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                 {...listeners}
             >
                 <div 
-                    className={`novelist-binder-collapse-icon ${collapsed ? 'is-collapsed' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}
+                    className={`novelist-binder-collapse-icon ${!effectiveExpanded ? 'is-collapsed' : ''}`}
+                    onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if(isFolder) onToggleExpand(item.path); 
+                    }}
                     style={{ visibility: isFolder ? 'visible' : 'hidden' }}
                     onPointerDown={(e) => e.stopPropagation()}
                 >
@@ -189,7 +192,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
                 <div className="novelist-binder-icon">
                     {item.name === "Trash" ? <Trash2 size={14} /> : (
-                        isFolder ? (collapsed ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
+                        isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
                     )}
                 </div>
 
@@ -211,7 +214,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                 {rankDisplay !== 999999 && !isFolder && <div className="novelist-rank-badge">#{rankDisplay}</div>}
             </div>
 
-            {isFolder && !collapsed && (
+            {isFolder && effectiveExpanded && (
                 <div className="novelist-binder-children">
                     <SortableContext items={sortedChildren.map(c => c.path)} strategy={verticalListSortingStrategy} disabled={!!filterQuery}>
                         {sortedChildren.map(child => (
@@ -225,7 +228,9 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                                 currentProject={currentProject}
                                 selectedPaths={selectedPaths}
                                 onNodeClick={onNodeClick}
-                                filterQuery={filterQuery} // Pass recursive prop
+                                filterQuery={filterQuery}
+                                expandedPaths={expandedPaths}
+                                onToggleExpand={onToggleExpand}
                             />
                         ))}
                     </SortableContext>
