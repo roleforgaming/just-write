@@ -151,7 +151,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         const leaf = app.workspace.getMostRecentLeaf();
         app.workspace.trigger("file-menu", menu, item, "file-explorer", leaf);
         
-        // Add "Delete Permanently" at the very bottom of the context menu
         if (currentProject && item.path !== currentProject.path && item.name !== "project.md") {
             menu.addSeparator();
             menu.addItem((i) => i.setTitle("Delete Permanently").setIcon("x-circle").setWarning(true)
