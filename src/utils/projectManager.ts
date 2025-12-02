@@ -1,5 +1,6 @@
 import { App, TFolder, TFile, Notice, TAbstractFile, normalizePath } from 'obsidian';
 import { getRank } from './metadata';
+import { DocumentTemplate, FolderMapping } from '../settings';
 
 export const PROJECT_MARKER_FILE = 'project.md';
 export const PROJECT_TYPE_KEY = 'novelist-project';
@@ -71,33 +72,22 @@ Project notes and synopsis go here.
             await this.app.vault.create(`${rootPath}/${PROJECT_MARKER_FILE}`, frontmatter);
 
             // 3. Process Template Structure
-            // Split by newline, trim whitespace, remove empty lines
             const paths = structure.split('\n')
                 .map(p => p.trim())
                 .filter(p => p.length > 0);
 
-            // We must ensure 'Trash' exists for the plugin to function correctly
             if (!paths.includes('Trash')) {
                 paths.push('Trash');
             }
-
-            // Sort paths alphabetically. This generally ensures parent folders (e.g., "A") 
-            // come before subfolders (e.g., "A/B"), preventing "folder does not exist" errors.
             paths.sort();
 
             for (const relPath of paths) {
                 const fullPath = normalizePath(`${rootPath}/${relPath}`);
-                // Check if it already exists (to handle duplicates or manual creation)
                 const existing = this.app.vault.getAbstractFileByPath(fullPath);
                 if (!existing) {
-                    // Create folder. Note: This creates folders sequentially. 
-                    // If the template has "A/B" but not "A", Obsidian's API might fail if "A" doesn't exist yet.
-                    // Ideally, templates should be explicit, or we write a recursive creator.
-                    // For now, assuming the template is well-formed or the sort helps.
                     try {
                         await this.app.vault.createFolder(fullPath);
                     } catch (e) {
-                        // If direct creation fails, try recursively creating parents
                         await this.ensureFolderExists(fullPath);
                     }
                 }
@@ -112,12 +102,7 @@ Project notes and synopsis go here.
         }
     }
 
-    // Helper to create nested folders if parents are missing
     private async ensureFolderExists(path: string) {
-        const dirs = path.split('/');
-        dirs.pop(); // Remove the last part if we assume 'path' is the folder we want to create? 
-        // No, 'createFolder' expects the full path.
-        
         let currentPath = "";
         const segments = path.split("/");
         
@@ -131,15 +116,10 @@ Project notes and synopsis go here.
     }
 
     getTrashFolder(projectRoot: TFolder): TFolder | null {
-        // Look for immediate child named Trash
         const trash = projectRoot.children.find(
             child => child instanceof TFolder && child.name === "Trash"
         ) as TFolder;
-        
         if (trash) return trash;
-
-        // Fallback: If user renamed it (not recommended) or using custom template without explicit Trash
-        // We rely on name "Trash" for logic usually.
         return null;
     }
 
@@ -160,10 +140,7 @@ Project notes and synopsis go here.
             return;
         }
 
-        if (item.path === trashFolder.path) {
-            new Notice("Cannot move Trash to Trash.");
-            return;
-        }
+        if (item.path === trashFolder.path) return;
 
         if (item instanceof TFile && item.extension === 'md') {
             await this.app.fileManager.processFrontMatter(item, (fm) => {
@@ -222,15 +199,12 @@ Project notes and synopsis go here.
 
     async emptyTrash(trashFolder: TFolder) {
         let target = trashFolder;
-        
         if (target.name !== 'Trash') {
             const found = this.getTrashFolder(target);
             if (found) target = found;
             else return; 
         }
-
         const children = [...target.children]; 
-        
         for (const child of children) {
             await this.app.vault.delete(child, true);
         }
@@ -241,6 +215,8 @@ Project notes and synopsis go here.
         await this.app.vault.delete(item, true);
         new Notice(`Deleted "${item.name}" permanently.`);
     }
+
+    // --- Updated Logic: Usage of Templates ---
 
     async createNewItem(parentFolder: TFolder, type: 'file' | 'folder', baseName = "Untitled") {
         let name = baseName;
@@ -257,28 +233,79 @@ Project notes and synopsis go here.
         if (type === 'folder') {
             await this.app.vault.createFolder(fullPath);
         } else {
+            // Calculate Rank
             const siblings = parentFolder.children.filter(c => c instanceof TFile && c.extension === 'md');
             let maxRank = 0;
             siblings.forEach(s => {
                 const r = getRank(this.app, s as TFile);
                 if (r < 999999 && r > maxRank) maxRank = r;
             });
+            const newRank = maxRank + 10;
 
-            const content = `---
-rank: ${maxRank + 10}
+            // Template Logic
+            let content = '';
+            
+            // 1. Get Project Metadata
+            const project = this.getProjectForFile(parentFolder);
+            if (project) {
+                const meta = this.getProjectMetadata(project);
+                if (meta) {
+                    const mappings: FolderMapping[] = meta.mappings || [];
+                    const templates: DocumentTemplate[] = meta.templates || [];
+
+                    // 2. Find Mapping
+                    const mapping = mappings.find(m => m.folderName === parentFolder.name);
+                    let templateToUse: DocumentTemplate | undefined;
+
+                    if (mapping) {
+                        templateToUse = templates.find(t => t.name === mapping.templateName);
+                    }
+
+                    // 3. Read Template
+                    if (templateToUse) {
+                        const templateFile = this.app.vault.getAbstractFileByPath(templateToUse.path);
+                        if (templateFile instanceof TFile) {
+                            content = await this.app.vault.read(templateFile);
+                        } else {
+                            new Notice(`Template file not found: ${templateToUse.path}`);
+                        }
+                    }
+                }
+            }
+
+            // 4. Fallback Default Content if no template found or empty
+            if (!content) {
+                content = `---
+rank: ${newRank}
 status: Draft
 label: Scene
 synopsis: ""
 notes: ""
 ---
 `;
+            } else {
+                // If template used, ensure rank is injected/updated if frontmatter exists
+                // Simple regex replacement to avoid heavy parsing for speed, or append if missing
+                if (content.startsWith('---')) {
+                    // Try to inject rank if not present, or replace it? 
+                    // Simpler: Just append the rank to the end of the frontmatter block
+                    // or let the user handle ranks manually in templates.
+                    // For now, let's inject rank
+                    if (!content.includes('rank:')) {
+                         content = content.replace('---', `---\nrank: ${newRank}`);
+                    }
+                } else {
+                    // Prepend frontmatter
+                    content = `---\nrank: ${newRank}\n---\n${content}`;
+                }
+            }
+
             await this.app.vault.create(fullPath, content);
         }
     }
 
     async getProjectWordCount(folder: TFolder): Promise<number> {
         let count = 0;
-        
         const countWords = async (file: TAbstractFile) => {
             if (file instanceof TFile && file.extension === 'md') {
                 const content = await this.app.vault.read(file);
@@ -290,10 +317,8 @@ notes: ""
                 }
             }
         };
-
         const manuscript = folder.children.find(c => c.name === 'Manuscript' && c instanceof TFolder);
         const target = manuscript instanceof TFolder ? manuscript : folder;
-
         await countWords(target);
         return count;
     }
@@ -313,11 +338,21 @@ notes: ""
             description: fm.description || "No description provided.",
             isArchived: fm.archived === true || fm.status === 'Archived',
             lastModified: marker.stat.mtime,
-            createdTime: marker.stat.ctime
+            createdTime: marker.stat.ctime,
+            // New fields for settings
+            templates: fm.templates || [],
+            mappings: fm.mappings || []
         };
     }
 
-    async updateProjectMetadata(folder: TFolder, data: { description?: string, tags?: string[], status?: string, archived?: boolean }) {
+    async updateProjectMetadata(folder: TFolder, data: { 
+        description?: string, 
+        tags?: string[], 
+        status?: string, 
+        archived?: boolean,
+        templates?: DocumentTemplate[],
+        mappings?: FolderMapping[]
+    }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
 
@@ -326,6 +361,8 @@ notes: ""
             if (data.tags !== undefined) fm.tags = data.tags;
             if (data.status !== undefined) fm.status = data.status;
             if (data.archived !== undefined) fm.archived = data.archived;
+            if (data.templates !== undefined) fm.templates = data.templates;
+            if (data.mappings !== undefined) fm.mappings = data.mappings;
         });
     }
 

@@ -14,23 +14,7 @@
       "structure": "Locations\nLocations/Worlds"
     }
   ],
-  "documentTemplates": [
-    {
-      "name": "Character",
-      "path": ""
-    },
-    {
-      "name": "",
-      "path": ""
-    },
-    {
-      "name": "",
-      "path": ""
-    }
-  ],
-  "folderMappings": [],
-  "defaultDocumentTemplate": "",
-  "binderShowRank": true,
+  "binderShowRank": false,
   "binderSortOrder": [
     "Manuscript",
     "Research",
@@ -69,5 +53,18 @@
   "dashboardWordCountFolder": "Manuscript",
   "advancedAutoSaveDelay": 1000,
   "advancedSearchDelay": 500,
-  "advancedReorderCommand": "Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on."
+  "advancedReorderCommand": "Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.",
+  "documentTemplates": [
+    {
+      "name": "Character",
+      "path": "t_character.md"
+    }
+  ],
+  "folderMappings": [
+    {
+      "folderName": "",
+      "templateName": ""
+    }
+  ],
+  "defaultDocumentTemplate": ""
 }

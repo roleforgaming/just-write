@@ -1,6 +1,5 @@
-import { App, PluginSettingTab, Setting, TFile } from 'obsidian';
+import { App, PluginSettingTab, Setting } from 'obsidian';
 import NovelistPlugin from './main';
-import { AbstractInputSuggest } from 'obsidian';
 
 // --- Interfaces ---
 
@@ -9,6 +8,8 @@ export interface ProjectTemplate {
     structure: string; // Newline separated paths
 }
 
+// These interfaces are now used by Project Settings, but we keep them exported here
+// or move them to a types file. For now, leaving them exported is fine.
 export interface DocumentTemplate {
     name: string;
     path: string;
@@ -23,26 +24,21 @@ export interface NovelistSettings {
     // 1. General & Startup
     startupBehavior: 'none' | 'dashboard' | 'binder' | 'both';
 
-    // 2. Project Templates
+    // 2. Project Templates (Global)
     projectTemplates: ProjectTemplate[];
 
-    // 3. Document Templates & Mapping
-    documentTemplates: DocumentTemplate[];
-    folderMappings: FolderMapping[];
-    defaultDocumentTemplate: string;
-
-    // 4. Binder
+    // 3. Binder
     binderShowRank: boolean;
     binderSortOrder: string[];
     binderDragSensitivity: number;
 
-    // 5. Corkboard
+    // 4. Corkboard
     corkboardDefaultSize: 'small' | 'medium' | 'large';
     corkboardShowIcon: boolean;
     corkboardShowAccent: boolean;
     corkboardDoubleClickAction: 'current' | 'new-tab' | 'new-pane';
 
-    // 6. Scrivenings
+    // 5. Scrivenings
     scriveningsMaxWidth: number;
     scriveningsCenterAlign: boolean;
     scriveningsSeparatorStyle: 'dashed' | 'solid' | 'subtle' | 'none';
@@ -51,17 +47,17 @@ export interface NovelistSettings {
     scriveningsLivePreviewHR: boolean;
     scriveningsLivePreviewImages: boolean;
 
-    // 7. Inspector
+    // 6. Inspector
     inspectorStatusOptions: string[];
     inspectorLabelOptions: string[];
     inspectorDefaultTab: 'synopsis' | 'notes' | 'metadata' | 'snapshots';
 
-    // 8. Dashboard
+    // 7. Dashboard
     dashboardDefaultView: 'grid' | 'list';
     dashboardDefaultSort: 'modified' | 'created' | 'name' | 'wordCount' | 'status';
     dashboardWordCountFolder: string;
 
-    // 9. Advanced
+    // 8. Advanced
     advancedAutoSaveDelay: number;
     advancedSearchDelay: number;
     advancedReorderCommand: string;
@@ -79,9 +75,6 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
             structure: 'Trash' 
         }
     ],
-    documentTemplates: [],
-    folderMappings: [],
-    defaultDocumentTemplate: '',
     binderShowRank: true,
     binderSortOrder: ['Manuscript', 'Research', 'Story Bible', 'Trash'],
     binderDragSensitivity: 8,
@@ -106,30 +99,6 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
     advancedSearchDelay: 500,
     advancedReorderCommand: 'Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.'
 };
-
-// --- Utility: File Suggester ---
-
-class FileSuggest extends AbstractInputSuggest<TFile> {
-    constructor(app: App, textInputEl: HTMLInputElement) {
-        super(app, textInputEl);
-    }
-
-    getSuggestions(query: string): TFile[] {
-        const files = this.app.vault.getMarkdownFiles();
-        return files.filter(file => 
-            file.path.toLowerCase().contains(query.toLowerCase())
-        ).slice(0, 20);
-    }
-
-    renderSuggestion(file: TFile, el: HTMLElement) {
-        el.setText(file.path);
-    }
-
-    selectSuggestion(file: TFile) {
-        this.setValue(file.path);
-        this.close();
-    }
-}
 
 // --- Settings Tab ---
 
@@ -165,10 +134,7 @@ export class NovelistSettingTab extends PluginSettingTab {
         // --- 2. Project Templates ---
         this.renderProjectTemplates(containerEl);
 
-        // --- 3. Document Templates & Mapping ---
-        this.renderDocumentTemplates(containerEl);
-
-        // --- 4. Binder Customization ---
+        // --- 3. Binder Customization ---
         containerEl.createEl('h2', { text: 'Binder' });
 
         new Setting(containerEl)
@@ -203,7 +169,7 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // --- 5. Corkboard Customization ---
+        // --- 4. Corkboard Customization ---
         containerEl.createEl('h2', { text: 'Corkboard' });
 
         new Setting(containerEl)
@@ -248,7 +214,7 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // --- 6. Scrivenings Customization ---
+        // --- 5. Scrivenings Customization ---
         containerEl.createEl('h2', { text: 'Scrivenings (Seamless Editor)' });
 
         new Setting(containerEl)
@@ -322,7 +288,7 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // --- 7. Inspector & Metadata ---
+        // --- 6. Inspector & Metadata ---
         containerEl.createEl('h2', { text: 'Inspector' });
 
         new Setting(containerEl)
@@ -358,7 +324,7 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // --- 8. Dashboard Customization ---
+        // --- 7. Dashboard Customization ---
         containerEl.createEl('h2', { text: 'Dashboard' });
 
         new Setting(containerEl)
@@ -396,7 +362,7 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // --- 9. Advanced Settings ---
+        // --- 8. Advanced Settings ---
         containerEl.createEl('h2', { text: 'Advanced' });
 
         new Setting(containerEl)
@@ -485,105 +451,5 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.display();
                 }));
-    }
-
-    renderDocumentTemplates(containerEl: HTMLElement) {
-        containerEl.createEl('h2', { text: 'Document Templates & Mapping' });
-        
-        containerEl.createEl('h4', { text: 'Document Templates' });
-        this.plugin.settings.documentTemplates.forEach((template, index) => {
-            const div = containerEl.createDiv({ cls: 'novelist-setting-item-box' });
-            div.style.display = 'flex';
-            div.style.alignItems = 'center';
-            div.style.gap = '10px';
-            div.style.marginBottom = '10px';
-
-            const nameInput = div.createEl('input', { type: 'text', placeholder: 'Template Name' });
-            nameInput.value = template.name;
-            nameInput.onchange = async () => {
-                this.plugin.settings.documentTemplates[index].name = nameInput.value;
-                await this.plugin.saveSettings();
-            };
-
-            const pathInput = div.createEl('input', { type: 'text', placeholder: 'Path to .md file' });
-            pathInput.value = template.path;
-            new FileSuggest(this.app, pathInput); // Attach suggester
-            pathInput.onchange = async () => {
-                this.plugin.settings.documentTemplates[index].path = pathInput.value;
-                await this.plugin.saveSettings();
-            };
-
-            const delBtn = div.createEl('button', { text: 'Delete' });
-            delBtn.onclick = async () => {
-                this.plugin.settings.documentTemplates.splice(index, 1);
-                await this.plugin.saveSettings();
-                this.display();
-            };
-        });
-
-        new Setting(containerEl)
-            .addButton(btn => btn
-                .setButtonText('Add Document Template')
-                .onClick(async () => {
-                    this.plugin.settings.documentTemplates.push({ name: '', path: '' });
-                    await this.plugin.saveSettings();
-                    this.display();
-                }));
-
-        containerEl.createEl('h4', { text: 'Folder Mapping' });
-        this.plugin.settings.folderMappings.forEach((mapping, index) => {
-            const div = containerEl.createDiv({ cls: 'novelist-setting-item-box' });
-            div.style.display = 'flex';
-            div.style.alignItems = 'center';
-            div.style.gap = '10px';
-            div.style.marginBottom = '10px';
-
-            div.createSpan({ text: 'In folder:' });
-            const folderInput = div.createEl('input', { type: 'text', placeholder: 'Folder Name' });
-            folderInput.value = mapping.folderName;
-            folderInput.onchange = async () => {
-                this.plugin.settings.folderMappings[index].folderName = folderInput.value;
-                await this.plugin.saveSettings();
-            };
-
-            div.createSpan({ text: 'use template:' });
-            const select = div.createEl('select');
-            this.plugin.settings.documentTemplates.forEach(t => {
-                const opt = select.createEl('option', { text: t.name, value: t.name });
-                if (t.name === mapping.templateName) opt.selected = true;
-            });
-            select.onchange = async () => {
-                this.plugin.settings.folderMappings[index].templateName = select.value;
-                await this.plugin.saveSettings();
-            };
-
-            const delBtn = div.createEl('button', { text: 'Delete' });
-            delBtn.onclick = async () => {
-                this.plugin.settings.folderMappings.splice(index, 1);
-                await this.plugin.saveSettings();
-                this.display();
-            };
-        });
-
-        new Setting(containerEl)
-            .addButton(btn => btn
-                .setButtonText('Add Folder Mapping')
-                .onClick(async () => {
-                    this.plugin.settings.folderMappings.push({ folderName: '', templateName: '' });
-                    await this.plugin.saveSettings();
-                    this.display();
-                }));
-
-        new Setting(containerEl)
-            .setName('Default Fallback Template')
-            .addDropdown(dropdown => {
-                dropdown.addOption('', 'None');
-                this.plugin.settings.documentTemplates.forEach(t => dropdown.addOption(t.name, t.name));
-                dropdown.setValue(this.plugin.settings.defaultDocumentTemplate);
-                dropdown.onChange(async (value) => {
-                    this.plugin.settings.defaultDocumentTemplate = value;
-                    await this.plugin.saveSettings();
-                });
-            });
     }
 }
