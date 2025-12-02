@@ -149,6 +149,13 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
     };
 
+    const handleDoubleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isFolder) {
+            onToggleExpand(item.path);
+        }
+    };
+
     // --- Sorting Recursion ---
     const sortedChildren = useMemo(() => {
         if (!isFolder) return [];
@@ -178,6 +185,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                 `}
                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
                 onClick={(e) => onNodeClick(e, item)}
+                onDoubleClick={handleDoubleClick}
                 onContextMenu={handleContextMenu}
                 {...attributes}
                 {...listeners}
