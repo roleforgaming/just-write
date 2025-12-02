@@ -14,10 +14,13 @@ interface OutlinerRowProps {
     allMetadataKeys: string[];
     onSave: (file: TFile, key: string, value: any) => void;
     isReadOnly: boolean;
+    isSelected: boolean;
+    onRowClick: () => void;
 }
 
 export const OutlinerRow: React.FC<OutlinerRowProps> = ({ 
-    app, file, metadata, wordCount, visibleColumns, allMetadataKeys, onSave, isReadOnly 
+    app, file, metadata, wordCount, visibleColumns, allMetadataKeys, 
+    onSave, isReadOnly, isSelected, onRowClick 
 }) => {
     const [title, setTitle] = useState(file.basename);
     const [synopsis, setSynopsis] = useState(metadata.synopsis);
@@ -52,8 +55,18 @@ export const OutlinerRow: React.FC<OutlinerRowProps> = ({
         }
     };
     
+    // Helper to ensure selecting an input also selects the row
+    const handleFocus = () => {
+        if (!isSelected) onRowClick();
+    };
+
     return (
-        <tr ref={setNodeRef} style={style} className={`novelist-outliner-row ${isDragging ? 'is-dragging' : ''}`}>
+        <tr 
+            ref={setNodeRef} 
+            style={style} 
+            className={`novelist-outliner-row ${isDragging ? 'is-dragging' : ''} ${isSelected ? 'is-selected' : ''}`}
+            onClick={onRowClick}
+        >
             {!isReadOnly && (
                 <td className="col-drag" {...attributes} {...listeners}>
                     <GripVertical size={16} />
@@ -67,6 +80,7 @@ export const OutlinerRow: React.FC<OutlinerRowProps> = ({
                         disabled={isReadOnly}
                         onChange={e => setTitle(e.target.value)} 
                         onBlur={handleTitleBlur} 
+                        onFocus={handleFocus}
                         onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
                     />
                 </td>
@@ -79,6 +93,7 @@ export const OutlinerRow: React.FC<OutlinerRowProps> = ({
                         disabled={isReadOnly}
                         onChange={e => setSynopsis(e.target.value)}
                         onBlur={() => onSave(file, 'synopsis', synopsis)}
+                        onFocus={handleFocus}
                         rows={1}
                     />
                 </td>
@@ -90,6 +105,7 @@ export const OutlinerRow: React.FC<OutlinerRowProps> = ({
                         value={metadata.label} 
                         disabled={isReadOnly}
                         onChange={e => onSave(file, 'label', e.target.value)}
+                        onFocus={handleFocus}
                     >
                          <option value="Chapter">Chapter</option>
                          <option value="Scene">Scene</option>
@@ -107,6 +123,7 @@ export const OutlinerRow: React.FC<OutlinerRowProps> = ({
                         value={metadata.status} 
                         disabled={isReadOnly}
                         onChange={e => onSave(file, 'status', e.target.value)}
+                        onFocus={handleFocus}
                     >
                         <option value="Draft">Draft</option>
                         <option value="Revised">Revised</option>
@@ -127,6 +144,7 @@ export const OutlinerRow: React.FC<OutlinerRowProps> = ({
                         disabled={isReadOnly}
                         defaultValue={(app.metadataCache.getFileCache(file)?.frontmatter || {})[key] || ''} 
                         onBlur={e => onSave(file, key, e.target.value)}
+                        onFocus={handleFocus}
                     />
                 </td>
             ))}

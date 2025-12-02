@@ -1425,8 +1425,21 @@ body {
     color: var(--text-muted);
 }
 
+.novelist-outliner-table tr {
+    transition: background-color 0.1s ease;
+}
+
 .novelist-outliner-table tr.is-dragging {
     background: var(--background-modifier-hover);
+}
+
+/* Selected Row Style */
+.novelist-outliner-table tr.is-selected {
+    background-color: rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+.novelist-outliner-table tr.is-selected td {
+    border-bottom-color: var(--interactive-accent);
 }
 
 .novelist-outliner-table td {
@@ -1446,6 +1459,7 @@ body {
     padding: 4px;
     margin: -4px; /* Counteract padding */
     border-radius: 3px;
+    color: var(--text-normal);
 }
 
 .novelist-outliner-table td input:focus,
