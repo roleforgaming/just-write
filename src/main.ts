@@ -5,9 +5,10 @@ import { ScriveningsView, VIEW_TYPE_SCRIVENINGS } from './views/ScriveningsView'
 import { OutlinerView, VIEW_TYPE_OUTLINER } from './views/OutlinerView';
 import { BinderView, VIEW_TYPE_BINDER } from './views/BinderView';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
+import { StatisticsView, VIEW_TYPE_STATISTICS } from './views/StatisticsView';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { ProjectManager } from './utils/projectManager';
-import { SessionManager } from './utils/sessionManager'; // New Import
+import { SessionManager } from './utils/sessionManager'; 
 import { NovelistSettingTab, NovelistSettings, DEFAULT_SETTINGS } from './settings';
 
 export default class NovelistPlugin extends Plugin {
@@ -29,6 +30,7 @@ export default class NovelistPlugin extends Plugin {
         this.registerView(VIEW_TYPE_OUTLINER, (leaf) => new OutlinerView(leaf));
         this.registerView(VIEW_TYPE_BINDER, (leaf) => new BinderView(leaf, this));
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
+        this.registerView(VIEW_TYPE_STATISTICS, (leaf) => new StatisticsView(leaf));
 
         // --- 2. Ribbon Icons ---
         this.addRibbonIcon('book', 'Open Binder', () => {
@@ -75,6 +77,13 @@ export default class NovelistPlugin extends Plugin {
             callback: () => this.activateDashboard(),
         });
 
+        // New Command for Statistics
+        this.addCommand({
+            id: 'open-novelist-statistics',
+            name: 'Open Project Statistics',
+            callback: () => this.activateStatistics(),
+        });
+
         // --- 5. Context Menus ---
         this.registerEvent(
             this.app.workspace.on("file-menu", (menu, file) => {
@@ -88,6 +97,13 @@ export default class NovelistPlugin extends Plugin {
                     menu.addItem((item) => {
                         item.setTitle("Open as Outliner").setIcon("list-tree").onClick(async () => await this.openOutliner(file));
                     });
+                    
+                    // Add Stats option if it is a project root
+                    if (projectManager.isProject(file)) {
+                        menu.addItem((item) => {
+                            item.setTitle("View Statistics").setIcon("bar-chart").onClick(async () => await this.openStatistics(file));
+                        });
+                    }
                 }
             })
         );
@@ -191,6 +207,7 @@ export default class NovelistPlugin extends Plugin {
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_OUTLINER);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_BINDER);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_DASHBOARD);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_STATISTICS);
     }
 
     async handleStartupBehavior() {
@@ -251,6 +268,21 @@ export default class NovelistPlugin extends Plugin {
         if (leaf) workspace.revealLeaf(leaf);
     }
 
+    async activateStatistics() {
+        const { workspace } = this.app;
+        let leaf: WorkspaceLeaf | null = null;
+        const leaves = workspace.getLeavesOfType(VIEW_TYPE_STATISTICS);
+        
+        if (leaves.length > 0) {
+            leaf = leaves[0];
+        } else {
+            leaf = workspace.getRightLeaf(true); // Open in split
+            await leaf.setViewState({ type: VIEW_TYPE_STATISTICS, active: true });
+        }
+        
+        if (leaf) workspace.revealLeaf(leaf);
+    }
+
     async openCorkboard(folder: TFolder) {
         const leaf = this.app.workspace.getLeaf(true);
         await leaf.setViewState({
@@ -275,6 +307,15 @@ export default class NovelistPlugin extends Plugin {
         const leaf = this.app.workspace.getLeaf(true);
         await leaf.setViewState({
             type: VIEW_TYPE_OUTLINER,
+            active: true,
+            state: { folderPath: folder.path }
+        });
+    }
+
+    async openStatistics(folder: TFolder) {
+        const leaf = this.app.workspace.getLeaf(true);
+        await leaf.setViewState({
+            type: VIEW_TYPE_STATISTICS,
             active: true,
             state: { folderPath: folder.path }
         });

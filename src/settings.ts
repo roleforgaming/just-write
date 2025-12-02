@@ -8,8 +8,6 @@ export interface ProjectTemplate {
     structure: string; // Newline separated paths
 }
 
-// These interfaces are now used by Project Settings, but we keep them exported here
-// or move them to a types file. For now, leaving them exported is fine.
 export interface DocumentTemplate {
     name: string;
     path: string;
@@ -64,6 +62,9 @@ export interface NovelistSettings {
     
     // 9. Writing Targets (Global)
     globalDailyTarget: number;
+    
+    // 10. Statistics
+    statsSubtractOnDelete: boolean;
 }
 
 export const DEFAULT_SETTINGS: NovelistSettings = {
@@ -101,7 +102,8 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
     advancedAutoSaveDelay: 1000,
     advancedSearchDelay: 500,
     advancedReorderCommand: 'Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.',
-    globalDailyTarget: 500
+    globalDailyTarget: 500,
+    statsSubtractOnDelete: true,
 };
 
 // --- Settings Tab ---
@@ -134,6 +136,8 @@ export class NovelistSettingTab extends PluginSettingTab {
                     this.plugin.settings.startupBehavior = value;
                     await this.plugin.saveSettings();
                 }));
+        
+        containerEl.createEl('h2', { text: 'Writing Targets & Statistics' });
 
         new Setting(containerEl)
             .setName('Global Daily Word Count Target')
@@ -146,6 +150,16 @@ export class NovelistSettingTab extends PluginSettingTab {
                         this.plugin.settings.globalDailyTarget = num;
                         await this.plugin.saveSettings();
                     }
+                }));
+
+        new Setting(containerEl)
+            .setName('Subtract Words on Deletion')
+            .setDesc('If enabled, deleting text reduces your daily session count. If disabled, session count only goes up.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.statsSubtractOnDelete)
+                .onChange(async (value) => {
+                    this.plugin.settings.statsSubtractOnDelete = value;
+                    await this.plugin.saveSettings();
                 }));
 
         // --- 2. Project Templates ---
