@@ -5,7 +5,7 @@ import * as icons from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getRank } from '../../utils/metadata';
-import { ProjectManager } from '../../utils/projectManager';
+import { ProjectManager, FOLDER_NOTE_NAME } from '../../utils/projectManager';
 import { ConfirmModal } from '../../modals/ConfirmModal';
 import { IconPickerModal } from '../../modals/IconPickerModal';
 
@@ -49,7 +49,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     const inTrash = projectManager.isInTrash(item);
     const isTrashFolder = currentProject && item.path === `${currentProject.path}/Trash`;
 
-    // Folder Note Check
+    // Folder Note Check (uses index.md via ProjectManager)
     const folderNote = useMemo(() => {
         if (!isFolder) return null;
         return projectManager.getFolderNote(item as TFolder);
@@ -112,12 +112,14 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         const newPath = item.parent ? `${item.parent.path}/${renameValue.trim()}` : renameValue.trim();
         try {
             await app.fileManager.renameFile(item, newPath);
+            
             // Folder Note Rename Logic
-            if (folderNote && isFolder) {
-                const oldNotePath = `${newPath}/${item.name}.md`;
-                const newNotePath = `${newPath}/${renameValue.trim()}.md`;
-                const movedNote = app.vault.getAbstractFileByPath(oldNotePath);
-                if (movedNote) await app.fileManager.renameFile(movedNote, newNotePath);
+            // If it's a folder, we need to update the title property in index.md
+            if (isFolder && folderNote) {
+                // The folder note itself is still named index.md, but we want to update the 'title' metadata
+                await app.fileManager.processFrontMatter(folderNote, (fm) => {
+                    fm.title = renameValue.trim();
+                });
             }
 
         } catch {

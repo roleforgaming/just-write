@@ -4,6 +4,7 @@ import { DocumentTemplate, FolderMapping } from '../settings';
 
 export const PROJECT_MARKER_FILE = 'project.md';
 export const PROJECT_TYPE_KEY = 'novelist-project';
+export const FOLDER_NOTE_NAME = 'index.md'; // Define constant
 
 export class ProjectManager {
     app: App;
@@ -220,11 +221,10 @@ Project notes and synopsis go here.
 
     /**
      * Gets the folder note for a specific folder.
-     * Convention: The note must be inside the folder and have the same name (e.g. Folder/Folder.md)
+     * Convention: The note must be inside the folder and named "index.md"
      */
     getFolderNote(folder: TFolder): TFile | null {
-        const noteName = `${folder.name}.md`;
-        const file = folder.children.find(c => c.name === noteName && c instanceof TFile);
+        const file = folder.children.find(c => c.name === FOLDER_NOTE_NAME && c instanceof TFile);
         return file as TFile || null;
     }
 
@@ -235,10 +235,11 @@ Project notes and synopsis go here.
         const existing = this.getFolderNote(folder);
         if (existing) return existing;
 
-        const path = `${folder.path}/${folder.name}.md`;
+        const path = `${folder.path}/${FOLDER_NOTE_NAME}`;
         
-        // Use default content
+        // Use default content, setting the title to the folder name
         const content = `---
+title: ${folder.name}
 label: Folder
 status: Planning
 synopsis: ""
@@ -401,22 +402,19 @@ notes: ""
         if (folder.name === newName) return;
         const newPath = normalizePath(`${folder.parent?.path || ''}/${newName}`);
         
-        // Check for folder note to rename it simultaneously
+        // Check for folder note (index.md)
         const folderNote = this.getFolderNote(folder);
 
         try {
             await this.app.fileManager.renameFile(folder, newPath);
             
-            // If folder note existed, it moved with the folder but has old name
+            // If folder note existed, update its title metadata (it remains named index.md)
             if (folderNote) {
-                // New path is newPath/OldName.md
-                // We want newPath/NewName.md
-                const movedNotePath = `${newPath}/${folderNote.name}`;
-                const movedNote = this.app.vault.getAbstractFileByPath(movedNotePath);
-                
-                if (movedNote && movedNote instanceof TFile) {
-                    await this.app.fileManager.renameFile(movedNote, `${newPath}/${newName}.md`);
-                }
+                // The folderNote variable still points to the TFile object which Obsidian updates to the new path
+                // We just need to update frontmatter
+                await this.app.fileManager.processFrontMatter(folderNote, (fm) => {
+                    fm.title = newName;
+                });
             }
 
         } catch {
