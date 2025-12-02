@@ -2,6 +2,7 @@ import { Plugin, WorkspaceLeaf, TFolder, TFile, MarkdownView, Notice } from 'obs
 import { InspectorView, VIEW_TYPE_INSPECTOR } from './views/InspectorView';
 import { CorkboardView, VIEW_TYPE_CORKBOARD } from './views/CorkboardView';
 import { ScriveningsView, VIEW_TYPE_SCRIVENINGS } from './views/ScriveningsView';
+import { OutlinerView, VIEW_TYPE_OUTLINER } from './views/OutlinerView'; // ADDED
 import { BinderView, VIEW_TYPE_BINDER } from './views/BinderView';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { CreateProjectModal } from './modals/CreateProjectModal';
@@ -15,10 +16,10 @@ export default class NovelistPlugin extends Plugin {
         await this.loadSettings();
 
         // --- 1. Register Views ---
-        // UPDATED: Passing 'this' (plugin instance) to Binder and Dashboard views
         this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf));
         this.registerView(VIEW_TYPE_CORKBOARD, (leaf) => new CorkboardView(leaf));
         this.registerView(VIEW_TYPE_SCRIVENINGS, (leaf) => new ScriveningsView(leaf));
+        this.registerView(VIEW_TYPE_OUTLINER, (leaf) => new OutlinerView(leaf)); // ADDED
         this.registerView(VIEW_TYPE_BINDER, (leaf) => new BinderView(leaf, this));
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 
@@ -77,6 +78,10 @@ export default class NovelistPlugin extends Plugin {
                     menu.addItem((item) => {
                         item.setTitle("Open as Scrivenings").setIcon("scroll-text").onClick(async () => await this.openScrivenings(file));
                     });
+                    // ADDED
+                    menu.addItem((item) => {
+                        item.setTitle("Open as Outliner").setIcon("list-tree").onClick(async () => await this.openOutliner(file));
+                    });
                 }
             })
         );
@@ -119,6 +124,7 @@ export default class NovelistPlugin extends Plugin {
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_CORKBOARD);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_SCRIVENINGS);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_OUTLINER); // ADDED
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_BINDER);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_DASHBOARD);
     }
@@ -199,5 +205,15 @@ export default class NovelistPlugin extends Plugin {
         if (leaf.view instanceof ScriveningsView) {
             await leaf.view.setFolder(folder);
         }
+    }
+    
+    // ADDED
+    async openOutliner(folder: TFolder) {
+        const leaf = this.app.workspace.getLeaf(true);
+        await leaf.setViewState({
+            type: VIEW_TYPE_OUTLINER,
+            active: true,
+            state: { folderPath: folder.path }
+        });
     }
 }

@@ -1384,3 +1384,91 @@ body {
     margin-top: 20px;
     font-style: italic;
 }
+
+/* --- Outliner View Styles --- */
+.novelist-outliner-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.novelist-outliner-toolbar {
+    height: 40px;
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.novelist-outliner-table-wrapper {
+    flex-grow: 1;
+    overflow: auto;
+}
+
+.novelist-outliner-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.novelist-outliner-table th {
+    position: sticky;
+    top: 0;
+    background: var(--background-secondary);
+    border-bottom: 2px solid var(--background-modifier-border);
+    padding: 8px;
+    text-align: left;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.novelist-outliner-table tr.is-dragging {
+    background: var(--background-modifier-hover);
+}
+
+.novelist-outliner-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    vertical-align: top;
+    font-size: 0.9em;
+}
+
+.novelist-outliner-table td input, 
+.novelist-outliner-table td textarea,
+.novelist-outliner-table td select {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 4px;
+    margin: -4px; /* Counteract padding */
+    border-radius: 3px;
+}
+
+.novelist-outliner-table td input:focus,
+.novelist-outliner-table td textarea:focus,
+.novelist-outliner-table td select:focus {
+    background: var(--background-primary);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+.novelist-outliner-table td textarea {
+    resize: vertical;
+    min-height: 28px;
+}
+
+.col-drag {
+    width: 24px;
+    cursor: grab;
+    text-align: center;
+    color: var(--text-faint);
+}
+.col-drag:active {
+    cursor: grabbing;
+}
+.col-title { width: 30%; }
+.col-synopsis { width: 40%; }
+.col-label, .col-status { width: 120px; }
+.col-wordcount { width: 80px; text-align: right; }
