@@ -1472,3 +1472,12 @@ body {
 .col-synopsis { width: 40%; }
 .col-label, .col-status { width: 120px; }
 .col-wordcount { width: 80px; text-align: right; }
+
+/* Fix Dropdown positioning in Outliner Toolbar (drop down instead of up) */
+.novelist-outliner-toolbar .novelist-dropdown-menu {
+    bottom: auto;
+    top: 100%;
+    margin-bottom: 0;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
