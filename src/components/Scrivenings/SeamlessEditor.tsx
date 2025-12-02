@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
 import { ScriveningsModel } from './ScriveningsModel';
-import { livePreviewPlugin } from './LivePreviewExtension'; // Import the new extension
+import { livePreviewExtension } from './LivePreviewExtension'; 
 import matter from 'gray-matter'; 
 
 // CodeMirror Imports
@@ -161,7 +161,7 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                     // Custom Extensions
                     protectSeparators,
                     separatorField(modelRef.current),
-                    livePreviewPlugin(app, modelRef.current), // <--- Inject Live Preview Extension here
+                    livePreviewExtension(app, modelRef.current),  // <--- Inject Live Preview Extension here
 
                     EditorView.theme({
                         "&": { height: "100%", fontSize: "var(--font-text-size)" },
