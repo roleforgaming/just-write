@@ -9,7 +9,7 @@ import NovelistPlugin from '../../main';
 
 interface DashboardProps {
     app: App;
-    plugin: NovelistPlugin; // Updated Interface
+    plugin: NovelistPlugin;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -18,21 +18,16 @@ type SortKey = 'modified' | 'created' | 'name' | 'wordCount' | 'status';
 export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
     const [projects, setProjects] = useState<any[]>([]);
     const [showArchived, setShowArchived] = useState(false);
-    
-    // View State
     const [viewMode, setViewMode] = useState<ViewMode>(plugin.settings.dashboardDefaultView || 'grid');
-
-    // Sorting and Filtering State
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
         key: plugin.settings.dashboardDefaultSort || 'modified', 
         direction: 'desc' 
     });
-
-    // Word Counts Cache
     const [wordCounts, setWordCounts] = useState<Record<string, number>>({});
 
-    const pm = new ProjectManager(app);
+    // Use memo to ensure ProjectManager uses latest plugin instance
+    const pm = useMemo(() => new ProjectManager(app, plugin), [app, plugin]);
 
     const load = async () => {
         const folders = pm.getAllProjects();
@@ -42,7 +37,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
         })).filter(p => p.meta !== null);
         setProjects(data);
 
-        // Calculate word counts asynchronously
         const counts: Record<string, number> = {};
         for (const p of data) {
             const count = await pm.getProjectWordCount(p.folder);
@@ -103,7 +97,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
     }, [projects, filterStatus, sortConfig, wordCounts, showArchived]);
 
     const handleCreate = () => {
-        // FIXED: Passing plugin instance to CreateProjectModal
         new CreateProjectModal(app, plugin, () => load()).open();
     };
 
@@ -169,7 +162,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
                     <div className="novelist-section-title">Projects ({processedProjects.length})</div>
                     <div className="novelist-project-grid">
                         {processedProjects.map(p => (
-                            <ProjectCard key={p.folder.path} app={app} folder={p.folder} meta={p.meta} />
+                            <ProjectCard 
+                                key={p.folder.path} 
+                                app={app} 
+                                folder={p.folder} 
+                                meta={p.meta} 
+                                wordCount={wordCounts[p.folder.path] || 0} // Pass word count
+                            />
                         ))}
                         {processedProjects.length === 0 && (
                             <div className="novelist-empty-state-card" onClick={handleCreate}>
@@ -206,7 +205,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
                         <div className={viewMode === 'grid' ? "novelist-project-grid" : ""}>
                             {viewMode === 'grid' ? (
                                 projects.filter(p => p.meta.isArchived).map(p => (
-                                    <ProjectCard key={p.folder.path} app={app} folder={p.folder} meta={p.meta} />
+                                    <ProjectCard 
+                                        key={p.folder.path} 
+                                        app={app} 
+                                        folder={p.folder} 
+                                        meta={p.meta}
+                                        wordCount={wordCounts[p.folder.path] || 0}
+                                    />
                                 ))
                             ) : (
                                 <ProjectList 

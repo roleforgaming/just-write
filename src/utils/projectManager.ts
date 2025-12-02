@@ -1,16 +1,20 @@
 import { App, TFolder, TFile, Notice, TAbstractFile, normalizePath } from 'obsidian';
 import { getRank } from './metadata';
 import { DocumentTemplate, FolderMapping } from '../settings';
+import NovelistPlugin from '../main';
 
 export const PROJECT_MARKER_FILE = 'project.md';
 export const PROJECT_TYPE_KEY = 'novelist-project';
-export const FOLDER_NOTE_NAME = 'index.md'; // Define constant
+export const FOLDER_NOTE_NAME = 'index.md';
 
 export class ProjectManager {
     app: App;
+    // We need plugin instance to access settings for folder name configuration
+    plugin?: NovelistPlugin;
 
-    constructor(app: App) {
+    constructor(app: App, plugin?: NovelistPlugin) {
         this.app = app;
+        this.plugin = plugin;
     }
 
     isProject(folder: TFolder): boolean {
@@ -61,13 +65,14 @@ export class ProjectManager {
             const rootFolder = await this.app.vault.createFolder(rootPath);
             
             // 2. Create Project Marker
-            // Added title property here
             const frontmatter = `---
 type: ${PROJECT_TYPE_KEY}
 title: ${projectName}
 status: Planning
 author: 
 deadline: 
+targetWordCount: 50000
+targetSessionCount: 0
 ---
 # ${projectName}
 Project notes and synopsis go here.
@@ -219,27 +224,16 @@ Project notes and synopsis go here.
         new Notice(`Deleted "${item.name}" permanently.`);
     }
 
-    // --- Folder Note Utilities ---
-
-    /**
-     * Gets the folder note for a specific folder.
-     * Convention: The note must be inside the folder and named "index.md"
-     */
     getFolderNote(folder: TFolder): TFile | null {
         const file = folder.children.find(c => c.name === FOLDER_NOTE_NAME && c instanceof TFile);
         return file as TFile || null;
     }
 
-    /**
-     * Creates a folder note for the given folder if it doesn't exist.
-     */
     async createFolderNote(folder: TFolder): Promise<TFile> {
         const existing = this.getFolderNote(folder);
         if (existing) return existing;
 
         const path = `${folder.path}/${FOLDER_NOTE_NAME}`;
-        
-        // Use default content, setting the title to the folder name
         const content = `---
 title: ${folder.name}
 label: Folder
@@ -250,8 +244,6 @@ notes: ""
 `;
         return await this.app.vault.create(path, content);
     }
-
-    // --- Updated Logic: Usage of Templates ---
 
     async createNewItem(parentFolder: TFolder, type: 'file' | 'folder', baseName = "Untitled") {
         let name = baseName;
@@ -268,7 +260,6 @@ notes: ""
         if (type === 'folder') {
             await this.app.vault.createFolder(fullPath);
         } else {
-            // Calculate Rank
             const siblings = parentFolder.children.filter(c => c instanceof TFile && c.extension === 'md');
             let maxRank = 0;
             siblings.forEach(s => {
@@ -277,18 +268,13 @@ notes: ""
             });
             const newRank = maxRank + 10;
 
-            // Template Logic
             let content = '';
-            
-            // 1. Get Project Metadata
             const project = this.getProjectForFile(parentFolder);
             if (project) {
                 const meta = this.getProjectMetadata(project);
                 if (meta) {
                     const mappings: FolderMapping[] = meta.mappings || [];
                     const templates: DocumentTemplate[] = meta.templates || [];
-
-                    // 2. Find Mapping
                     const mapping = mappings.find(m => m.folderName === parentFolder.name);
                     let templateToUse: DocumentTemplate | undefined;
 
@@ -296,7 +282,6 @@ notes: ""
                         templateToUse = templates.find(t => t.name === mapping.templateName);
                     }
 
-                    // 3. Read Template
                     if (templateToUse) {
                         const templateFile = this.app.vault.getAbstractFileByPath(templateToUse.path);
                         if (templateFile instanceof TFile) {
@@ -308,9 +293,7 @@ notes: ""
                 }
             }
 
-            // 4. Fallback Default Content if no template found or empty
             if (!content) {
-                // Added title property here
                 content = `---
 title: ${name}
 rank: ${newRank}
@@ -321,7 +304,6 @@ notes: ""
 ---
 `;
             } else {
-                // If template used, ensure rank AND title are injected/updated if frontmatter exists
                 if (content.startsWith('---')) {
                     let injections = '';
                     if (!content.includes('rank:')) injections += `rank: ${newRank}\n`;
@@ -341,10 +323,19 @@ notes: ""
 
     async getProjectWordCount(folder: TFolder): Promise<number> {
         let count = 0;
+        
+        // Determine target folder name from settings or default
+        const targetFolderName = this.plugin?.settings.dashboardWordCountFolder || 'Manuscript';
+        
         const countWords = async (file: TAbstractFile) => {
             if (file instanceof TFile && file.extension === 'md') {
-                const content = await this.app.vault.read(file);
-                const words = content.match(/\S+/g);
+                // Check if file is in trash
+                if (this.isInTrash(file)) return;
+                
+                const content = await this.app.vault.cachedRead(file);
+                // Basic word count: strip frontmatter then count words
+                const contentBody = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+                const words = contentBody.match(/\S+/g);
                 if (words) count += words.length;
             } else if (file instanceof TFolder) {
                 for (const child of file.children) {
@@ -352,8 +343,11 @@ notes: ""
                 }
             }
         };
-        const manuscript = folder.children.find(c => c.name === 'Manuscript' && c instanceof TFolder);
+
+        // Try to find the specific manuscript folder first
+        const manuscript = folder.children.find(c => c.name === targetFolderName && c instanceof TFolder);
         const target = manuscript instanceof TFolder ? manuscript : folder;
+        
         await countWords(target);
         return count;
     }
@@ -377,7 +371,12 @@ notes: ""
             templates: fm.templates || [],
             mappings: fm.mappings || [],
             icons: fm.icons || {},
-            iconColors: fm.iconColors || {} 
+            iconColors: fm.iconColors || {},
+            // New fields
+            targetWordCount: fm.targetWordCount || 0,
+            targetSessionCount: fm.targetSessionCount || 0,
+            targetDeadline: fm.targetDeadline || '',
+            writingHistory: fm.writingHistory || {}
         };
     }
 
@@ -389,7 +388,11 @@ notes: ""
         templates?: DocumentTemplate[],
         mappings?: FolderMapping[],
         icons?: Record<string, string>,
-        iconColors?: Record<string, string>
+        iconColors?: Record<string, string>,
+        targetWordCount?: number,
+        targetSessionCount?: number,
+        targetDeadline?: string,
+        writingHistory?: Record<string, number>
     }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -403,6 +406,10 @@ notes: ""
             if (data.mappings !== undefined) fm.mappings = data.mappings;
             if (data.icons !== undefined) fm.icons = data.icons;
             if (data.iconColors !== undefined) fm.iconColors = data.iconColors;
+            if (data.targetWordCount !== undefined) fm.targetWordCount = data.targetWordCount;
+            if (data.targetSessionCount !== undefined) fm.targetSessionCount = data.targetSessionCount;
+            if (data.targetDeadline !== undefined) fm.targetDeadline = data.targetDeadline;
+            if (data.writingHistory !== undefined) fm.writingHistory = data.writingHistory;
         });
     }
 
@@ -410,16 +417,12 @@ notes: ""
         if (folder.name === newName) return;
         const newPath = normalizePath(`${folder.parent?.path || ''}/${newName}`);
         
-        // Check for folder note (index.md)
         const folderNote = this.getFolderNote(folder);
 
         try {
             await this.app.fileManager.renameFile(folder, newPath);
             
-            // If folder note existed, update its title metadata (it remains named index.md)
             if (folderNote) {
-                // The folderNote variable still points to the TFile object which Obsidian updates to the new path
-                // We just need to update frontmatter
                 await this.app.fileManager.processFrontMatter(folderNote, (fm) => {
                     fm.title = newName;
                 });

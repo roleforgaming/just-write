@@ -7,7 +7,12 @@ export interface NovelistMetadata {
     status: string;
     icon: string;
     accentColor: string;
-    notes: string; // Added this
+    notes: string;
+    // New fields for Project Metadata
+    targetWordCount?: number;
+    targetSessionCount?: number;
+    targetDeadline?: string;
+    writingHistory?: Record<string, number>;
 }
 
 export function getMetadata(app: App, file: TFile): NovelistMetadata {
@@ -21,7 +26,7 @@ export function getMetadata(app: App, file: TFile): NovelistMetadata {
         status: fm.status || "Draft",
         icon: fm.icon || "file-text",
         accentColor: fm.accentColor || "",
-        notes: fm.notes || "" // Added this
+        notes: fm.notes || ""
     };
 }
 

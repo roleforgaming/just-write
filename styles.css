@@ -996,6 +996,33 @@ body {
     color: var(--text-muted);
 }
 
+/* Progress Bar Styles */
+.novelist-card-progress-section {
+    padding: 0 15px 10px 15px;
+}
+
+.novelist-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.novelist-progress-bar-bg {
+    height: 6px;
+    background-color: var(--background-modifier-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.novelist-progress-bar-fill {
+    height: 100%;
+    background-color: var(--color-green);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
 .novelist-card-actions {
     padding: 10px 15px;
     background: var(--background-primary);
@@ -1494,4 +1521,10 @@ body {
     margin-bottom: 0;
     margin-top: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* --- Status Bar --- */
+.novelist-status-bar {
+    font-weight: 600;
+    color: var(--text-accent);
 }

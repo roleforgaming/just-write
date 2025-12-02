@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
-import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FileQuestion, Palette, FilePlus2 } from 'lucide-react';
+import { ChevronDown, Folder, FolderOpen, Trash2, FileQuestion } from 'lucide-react';
 import * as icons from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getRank } from '../../utils/metadata';
-import { ProjectManager, FOLDER_NOTE_NAME } from '../../utils/projectManager';
+import { ProjectManager } from '../../utils/projectManager';
 import { ConfirmModal } from '../../modals/ConfirmModal';
 import { IconPickerModal } from '../../modals/IconPickerModal';
 
@@ -233,7 +233,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                     document.body.removeChild(colorInput);
                 };
                 
-                colorInput.onblur = () => { try { document.body.removeChild(colorInput); } catch (e) {} };
+                colorInput.onblur = () => { try { document.body.removeChild(colorInput); } catch {} };
                 document.body.appendChild(colorInput);
                 colorInput.click();
             })

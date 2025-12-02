@@ -2,24 +2,31 @@ import { Plugin, WorkspaceLeaf, TFolder, TFile, MarkdownView, Notice } from 'obs
 import { InspectorView, VIEW_TYPE_INSPECTOR } from './views/InspectorView';
 import { CorkboardView, VIEW_TYPE_CORKBOARD } from './views/CorkboardView';
 import { ScriveningsView, VIEW_TYPE_SCRIVENINGS } from './views/ScriveningsView';
-import { OutlinerView, VIEW_TYPE_OUTLINER } from './views/OutlinerView'; // ADDED
+import { OutlinerView, VIEW_TYPE_OUTLINER } from './views/OutlinerView';
 import { BinderView, VIEW_TYPE_BINDER } from './views/BinderView';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { ProjectManager } from './utils/projectManager';
+import { SessionManager } from './utils/sessionManager'; // New Import
 import { NovelistSettingTab, NovelistSettings, DEFAULT_SETTINGS } from './settings';
 
 export default class NovelistPlugin extends Plugin {
     settings: NovelistSettings;
+    sessionManager: SessionManager;
+    statusBarItem: HTMLElement;
 
     async onload() {
         await this.loadSettings();
+
+        // Initialize Managers
+        this.sessionManager = new SessionManager(this.app, this);
+        const projectManager = new ProjectManager(this.app, this);
 
         // --- 1. Register Views ---
         this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf));
         this.registerView(VIEW_TYPE_CORKBOARD, (leaf) => new CorkboardView(leaf));
         this.registerView(VIEW_TYPE_SCRIVENINGS, (leaf) => new ScriveningsView(leaf));
-        this.registerView(VIEW_TYPE_OUTLINER, (leaf) => new OutlinerView(leaf)); // ADDED
+        this.registerView(VIEW_TYPE_OUTLINER, (leaf) => new OutlinerView(leaf));
         this.registerView(VIEW_TYPE_BINDER, (leaf) => new BinderView(leaf, this));
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 
@@ -78,7 +85,6 @@ export default class NovelistPlugin extends Plugin {
                     menu.addItem((item) => {
                         item.setTitle("Open as Scrivenings").setIcon("scroll-text").onClick(async () => await this.openScrivenings(file));
                     });
-                    // ADDED
                     menu.addItem((item) => {
                         item.setTitle("Open as Outliner").setIcon("list-tree").onClick(async () => await this.openOutliner(file));
                     });
@@ -87,8 +93,6 @@ export default class NovelistPlugin extends Plugin {
         );
         
         // --- 6. Read-Only Enforcement (Trash) ---
-        const projectManager = new ProjectManager(this.app);
-        
         this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
                 if (file && projectManager.isInTrash(file)) {
@@ -103,13 +107,73 @@ export default class NovelistPlugin extends Plugin {
                         }
                     }
                 }
+                
+                // Session Manager Updates
+                if (file) {
+                    this.sessionManager.onFileOpen(file);
+                    // Detect current project context to set daily target
+                    const project = projectManager.getProjectForFile(file);
+                    this.sessionManager.updateTarget(project);
+                    this.updateStatusBar();
+                } else {
+                    this.statusBarItem.hide();
+                }
             })
         );
 
-        // --- 7. Startup Behavior ---
+        // --- 7. Session Tracking (Status Bar) ---
+        this.statusBarItem = this.addStatusBarItem();
+        this.statusBarItem.addClass('novelist-status-bar');
+        this.updateStatusBar(); // Initial render
+
+        let editorChangeTimeout: NodeJS.Timeout;
+        
+        this.registerEvent(
+            this.app.workspace.on('editor-change', (editor, info) => {
+                if (editorChangeTimeout) clearTimeout(editorChangeTimeout);
+                
+                // Debounce the calculation
+                editorChangeTimeout = setTimeout(() => {
+                    const file = info.file;
+                    if (!file || file.extension !== 'md') return;
+
+                    const project = projectManager.getProjectForFile(file);
+                    if (!project) return; // Only track if in a Novelist project
+
+                    const content = editor.getValue();
+                    this.sessionManager.updateSessionCount(file, content);
+                    this.updateStatusBar();
+                    
+                }, 1000); // 1 second debounce
+            })
+        );
+
+        // --- 8. Startup Behavior ---
         this.app.workspace.onLayoutReady(() => {
             this.handleStartupBehavior();
         });
+    }
+
+    updateStatusBar() {
+        const file = this.app.workspace.getActiveFile();
+        const pm = new ProjectManager(this.app, this);
+        const project = file ? pm.getProjectForFile(file) : null;
+
+        if (!project) {
+            this.statusBarItem.hide();
+            return;
+        }
+
+        this.statusBarItem.show();
+        const { current, target, percent } = this.sessionManager.getSessionProgress();
+        
+        // Simple text for MVP: "125 / 500 words (25%)"
+        let text = `${current} words today`;
+        if (target > 0) {
+            text += ` / ${target} (${percent}%)`;
+        }
+        
+        this.statusBarItem.setText(text);
     }
 
     async loadSettings() {
@@ -124,7 +188,7 @@ export default class NovelistPlugin extends Plugin {
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_CORKBOARD);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_SCRIVENINGS);
-        this.app.workspace.detachLeavesOfType(VIEW_TYPE_OUTLINER); // ADDED
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_OUTLINER);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_BINDER);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_DASHBOARD);
     }
@@ -207,7 +271,6 @@ export default class NovelistPlugin extends Plugin {
         }
     }
     
-    // ADDED
     async openOutliner(folder: TFolder) {
         const leaf = this.app.workspace.getLeaf(true);
         await leaf.setViewState({

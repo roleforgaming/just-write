@@ -61,6 +61,9 @@ export interface NovelistSettings {
     advancedAutoSaveDelay: number;
     advancedSearchDelay: number;
     advancedReorderCommand: string;
+    
+    // 9. Writing Targets (Global)
+    globalDailyTarget: number;
 }
 
 export const DEFAULT_SETTINGS: NovelistSettings = {
@@ -97,7 +100,8 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
     dashboardWordCountFolder: 'Manuscript',
     advancedAutoSaveDelay: 1000,
     advancedSearchDelay: 500,
-    advancedReorderCommand: 'Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.'
+    advancedReorderCommand: 'Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.',
+    globalDailyTarget: 500
 };
 
 // --- Settings Tab ---
@@ -129,6 +133,19 @@ export class NovelistSettingTab extends PluginSettingTab {
                 .onChange(async (value: any) => {
                     this.plugin.settings.startupBehavior = value;
                     await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Global Daily Word Count Target')
+            .setDesc('Default session target if a specific project target is not set.')
+            .addText(text => text
+                .setValue(String(this.plugin.settings.globalDailyTarget))
+                .onChange(async (value) => {
+                    const num = parseInt(value);
+                    if (!isNaN(num) && num >= 0) {
+                        this.plugin.settings.globalDailyTarget = num;
+                        await this.plugin.saveSettings();
+                    }
                 }));
 
         // --- 2. Project Templates ---

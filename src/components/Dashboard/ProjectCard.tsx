@@ -1,6 +1,6 @@
 import React from 'react';
 import { App, TFolder, Menu } from 'obsidian';
-import { FolderOpen, MoreVertical, Tag, ChevronDown } from 'lucide-react';
+import { FolderOpen, MoreVertical, Tag, ChevronDown, Target } from 'lucide-react';
 import { ProjectManager } from '../../utils/projectManager';
 import { ConfirmModal } from '../../modals/ConfirmModal';
 import { ProjectSettingsModal } from '../../modals/ProjectSettingsModal';
@@ -8,10 +8,11 @@ import { ProjectSettingsModal } from '../../modals/ProjectSettingsModal';
 interface ProjectCardProps {
     app: App;
     folder: TFolder;
-    meta: any; // Result of getProjectMetadata
+    meta: any; 
+    wordCount?: number; // Added prop
 }
 
-export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) => {
+export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta, wordCount = 0 }) => {
     const pm = new ProjectManager(app);
 
     const handleOpen = (e: React.MouseEvent) => {
@@ -31,7 +32,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
                 item.setTitle(statusOption)
                     .setChecked(meta.status === statusOption)
                     .onClick(() => {
-                        // If switching to Archived, set archived flag true, otherwise false
                         const isArchived = statusOption === 'Archived';
                         pm.updateProjectMetadata(folder, { 
                             status: statusOption, 
@@ -54,7 +54,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
                 .onClick(() => new ProjectSettingsModal(app, folder).open());
         });
 
-        // Toggle Archive logic based on current state
         if (meta.isArchived) {
              menu.addItem(item => {
                 item.setTitle("Unarchive")
@@ -89,7 +88,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
         menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
     };
 
-    // Color code status
     const getStatusColor = (s: string) => {
         switch(s) {
             case 'Planning': return 'var(--text-muted)';
@@ -99,6 +97,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
             default: return 'var(--text-normal)';
         }
     };
+
+    // Progress Logic
+    const target = meta.targetWordCount || 0;
+    const percent = target > 0 ? Math.min(100, Math.round((wordCount / target) * 100)) : 0;
 
     return (
         <div className={`novelist-project-card ${meta.isArchived ? 'is-archived' : ''}`}>
@@ -121,7 +123,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
                 </button>
             </div>
 
-            {/* Content Body - Removed onClick logic */}
+            {/* Content Body */}
             <div className="novelist-card-content">
                 <h3 className="novelist-card-title">{meta.name}</h3>
                 <p className="novelist-card-desc">{meta.description}</p>
@@ -132,6 +134,22 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
                     ))}
                 </div>
             </div>
+
+            {/* Progress Bar Section */}
+            {target > 0 && (
+                <div className="novelist-card-progress-section" title={`${wordCount.toLocaleString()} / ${target.toLocaleString()} words`}>
+                    <div className="novelist-progress-labels">
+                        <span className="progress-icon"><Target size={10}/> {percent}%</span>
+                        <span className="progress-count">{wordCount.toLocaleString()} words</span>
+                    </div>
+                    <div className="novelist-progress-bar-bg">
+                        <div 
+                            className="novelist-progress-bar-fill" 
+                            style={{ width: `${percent}%` }}
+                        ></div>
+                    </div>
+                </div>
+            )}
 
             {/* Actions Footer */}
             <div className="novelist-card-actions">

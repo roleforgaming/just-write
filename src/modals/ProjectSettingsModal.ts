@@ -44,6 +44,11 @@ export class ProjectSettingsModal extends Modal {
     // Templates State
     templates: DocumentTemplate[] = [];
     mappings: FolderMapping[] = [];
+
+    // Targets State
+    targetWordCount: number = 0;
+    targetSessionCount: number = 0;
+    targetDeadline: string = '';
     
     constructor(app: App, project: TFolder) {
         super(app);
@@ -57,21 +62,22 @@ export class ProjectSettingsModal extends Modal {
         
         this.templates = meta?.templates || [];
         this.mappings = meta?.mappings || [];
+
+        this.targetWordCount = meta?.targetWordCount || 0;
+        this.targetSessionCount = meta?.targetSessionCount || 0;
+        this.targetDeadline = meta?.targetDeadline || '';
     }
 
     onOpen() {
         this.render();
     }
 
-    // Helper: Recursively get all subfolders in the project
     getAllProjectFolders(parent: TFolder): TFolder[] {
         let folders: TFolder[] = [];
         
         for (const child of parent.children) {
             if (child instanceof TFolder) {
-                // Optional: Skip Trash folder to keep list clean
                 if (child.name === 'Trash') continue;
-
                 folders.push(child);
                 folders = folders.concat(this.getAllProjectFolders(child));
             }
@@ -112,7 +118,40 @@ export class ProjectSettingsModal extends Modal {
                 .onChange(val => this.tags = val)
             );
 
-        // --- SECTION 2: DOCUMENT TEMPLATES ---
+        // --- SECTION 2: WRITING TARGETS ---
+        contentEl.createEl('h3', { text: 'Writing Targets' });
+
+        new Setting(contentEl)
+            .setName('Manuscript Word Count Target')
+            .setDesc('Total goal for the project (e.g. 80000)')
+            .addText(text => text
+                .setValue(String(this.targetWordCount))
+                .onChange(val => {
+                    const num = parseInt(val);
+                    if (!isNaN(num) && num >= 0) this.targetWordCount = num;
+                })
+            );
+
+        new Setting(contentEl)
+            .setName('Daily Session Target')
+            .setDesc('Goal for daily writing sessions. Leave 0 to use global default.')
+            .addText(text => text
+                .setValue(String(this.targetSessionCount))
+                .onChange(val => {
+                    const num = parseInt(val);
+                    if (!isNaN(num) && num >= 0) this.targetSessionCount = num;
+                })
+            );
+
+        new Setting(contentEl)
+            .setName('Project Deadline')
+            .addText(text => {
+                text.inputEl.type = 'date';
+                text.setValue(this.targetDeadline);
+                text.onChange(val => this.targetDeadline = val);
+            });
+
+        // --- SECTION 3: DOCUMENT TEMPLATES ---
         contentEl.createEl('h3', { text: 'Document Templates' });
         contentEl.createEl('p', { text: 'Define templates that point to markdown files in your vault.', cls: 'setting-item-description' });
 
@@ -152,13 +191,12 @@ export class ProjectSettingsModal extends Modal {
                     this.render();
                 }));
 
-        // --- SECTION 3: FOLDER MAPPINGS ---
+        // --- SECTION 4: FOLDER MAPPINGS ---
         contentEl.createEl('h3', { text: 'Folder Mappings' });
         contentEl.createEl('p', { text: 'Automatically use a template when creating files in specific folders.', cls: 'setting-item-description' });
 
         const mappingsDiv = contentEl.createDiv();
         
-        // Fetch folders once to populate dropdowns
         const availableFolders = this.getAllProjectFolders(this.project);
 
         this.mappings.forEach((mapping, index) => {
@@ -170,17 +208,13 @@ export class ProjectSettingsModal extends Modal {
 
             div.createSpan({ text: 'In folder:' });
             
-            // --- FOLDER DROPDOWN ---
             const folderSelect = div.createEl('select');
             
-            // Add a placeholder option if currently empty
             if (!mapping.folderName) {
                 folderSelect.createEl('option', { text: 'Select a Folder...', value: '' });
             }
 
             availableFolders.forEach(folder => {
-                // We show the relative path for clarity, but store the Name 
-                // (matching ProjectManager logic)
                 const relativePath = folder.path.replace(this.project.path + '/', '');
                 const option = folderSelect.createEl('option', { 
                     text: relativePath, 
@@ -198,7 +232,6 @@ export class ProjectSettingsModal extends Modal {
 
             div.createSpan({ text: 'use template:' });
             
-            // --- TEMPLATE DROPDOWN ---
             const templateSelect = div.createEl('select');
             
             if (!mapping.templateName && this.templates.length > 0) {
@@ -246,7 +279,11 @@ export class ProjectSettingsModal extends Modal {
                         description: this.description,
                         tags: tagArray,
                         templates: this.templates,
-                        mappings: this.mappings
+                        mappings: this.mappings,
+                        // Save targets
+                        targetWordCount: this.targetWordCount,
+                        targetSessionCount: this.targetSessionCount,
+                        targetDeadline: this.targetDeadline
                     });
 
                     if (this.newName !== this.project.name) {
