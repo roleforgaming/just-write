@@ -1,5 +1,5 @@
 {
-  "startupBehavior": "dashboard",
+  "startupBehavior": "both",
   "projectTemplates": [
     {
       "name": "Standard Novel",
