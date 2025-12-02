@@ -53,7 +53,6 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
     const doc = state.doc;
     const selection = state.selection;
 
-    // Helper to find which file in the scrivenings view corresponds to this position
     const getSourcePath = (_pos: number) => {
         return model.sections[0]?.file.path || "";
     };
@@ -64,13 +63,16 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
         enter: (node) => {
             const typeName = node.type.name;
             
-            // 1. BLOCK-LEVEL REPLACEMENTS
+            // --- 1. BLOCK-LEVEL REPLACEMENTS (Render HTML) ---
+            // Added: Table, FencedCode
             const isHeading = typeName.startsWith("ATXHeading");
             const isBlockquote = typeName === "Blockquote";
             const isHR = typeName === "HorizontalRule";
             const isImage = typeName === "Image";
+            const isTable = typeName === "Table";
+            const isCodeBlock = typeName === "FencedCode";
 
-            if (isHeading || isBlockquote || isHR || isImage) {
+            if (isHeading || isBlockquote || isHR || isImage || isTable || isCodeBlock) {
                 let isCursorInside = false;
                 
                 for (const range of selection.ranges) {
@@ -83,7 +85,12 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
                 if (!isCursorInside) {
                     const textContent = doc.sliceString(node.from, node.to);
                     const sourcePath = getSourcePath(node.from);
-                    const cssClass = isImage ? "image" : typeName.toLowerCase();
+                    
+                    // Map node type to a CSS class for the wrapper
+                    let cssClass = typeName.toLowerCase();
+                    if(isImage) cssClass = "image";
+                    if(isCodeBlock) cssClass = "code-block";
+                    if(isTable) cssClass = "table";
 
                     builder.push(
                         Decoration.replace({
@@ -97,16 +104,18 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
                             block: !isImage, 
                         }).range(node.from, node.to)
                     );
-                    return false; 
+                    return false; // Skip checking children of these blocks
                 }
             }
 
-            // 2. INLINE FORMATTING
+            // --- 2. INLINE FORMATTING (Hide syntax, style text) ---
+            // Added: Link
             const isBold = typeName === "StrongEmphasis";
             const isItalic = typeName === "Emphasis";
             const isInlineCode = typeName === "InlineCode";
+            const isLink = typeName === "Link";
 
-            if (isBold || isItalic || isInlineCode) {
+            if (isBold || isItalic || isInlineCode || isLink) {
                 let isCursorInside = false;
                 for (const range of selection.ranges) {
                     if (range.head >= node.from && range.head <= node.to) {
@@ -132,11 +141,42 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
                             prefixLen = match[1].length;
                             suffixLen = prefixLen; 
                         }
+                    } else if (isLink) {
+                        // Regex to find standard markdown links [text](url)
+                        // This identifies the '][' or '](' split
+                        const match = text.match(/^\[(.*?)\](\(.*\))$/);
+                        if (match) {
+                            // match[1] is the text, match[2] is the (url)
+                            // We want to hide the first char '[' and the last part '](...)'
+                            prefixLen = 1; // Hide '['
+                            suffixLen = match[2].length + 1; // Hide '](url)' ... roughly
+                            
+                            // To be safer with CM ranges, let's use exact positions based on match indices
+                            // But for this simple implementation, we'll assume standard formatting
+                            if(text.endsWith(")")) {
+                                const splitIdx = text.lastIndexOf("](");
+                                if(splitIdx === -1) {
+                                     // Try standard Obsidian link [text](url)
+                                     const standardSplit = text.lastIndexOf("]("); 
+                                     // Actually simple regex is safer:
+                                     const parts = /^\[(.*?)\](\(.*\))$/.exec(text);
+                                     if(parts) {
+                                         builder.push(Decoration.replace({}).range(node.from, node.from + 1)); // Hide [
+                                         builder.push(Decoration.mark({ class: "cm-link" }).range(node.from + 1, node.to - parts[2].length - 1)); // Style text
+                                         builder.push(Decoration.replace({}).range(node.to - parts[2].length - 1, node.to)); // Hide ](url)
+                                         return; // Special return because we handled ranges manually
+                                     }
+                                     return; 
+                                }
+                            }
+                        }
                     }
 
                     if (prefixLen > 0 && suffixLen > 0) {
+                        // Hide prefix
                         builder.push(Decoration.replace({}).range(node.from, node.from + prefixLen));
                         
+                        // Style Content
                         let styleClass = "";
                         let styleAttributes = {};
 
@@ -160,6 +200,7 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
                             }).range(node.from + prefixLen, node.to - suffixLen)
                         );
 
+                        // Hide suffix
                         builder.push(Decoration.replace({}).range(node.to - suffixLen, node.to));
                     }
                 }

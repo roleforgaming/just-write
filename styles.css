@@ -1326,3 +1326,9 @@ body {
     resize: vertical;
     min-height: 80px;
 }
+
+.cm-link {
+    color: var(--text-accent);
+    text-decoration: underline;
+    cursor: pointer;
+}

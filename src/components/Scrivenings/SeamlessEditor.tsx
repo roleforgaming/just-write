@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
 import { ScriveningsModel } from './ScriveningsModel';
-import { livePreviewExtension } from './LivePreviewExtension'; 
 import matter from 'gray-matter'; 
 
 // CodeMirror Imports
@@ -10,6 +9,7 @@ import { EditorView, keymap, highlightSpecialChars, drawSelection, Decoration, D
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data"; 
+import { livePreviewExtension } from './LivePreviewExtension'; 
 
 // --- 1. The Separator Widget (Unchanged) ---
 class HeaderWidget extends WidgetType {
@@ -161,7 +161,7 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                     // Custom Extensions
                     protectSeparators,
                     separatorField(modelRef.current),
-                    livePreviewExtension(app, modelRef.current),  // <--- Inject Live Preview Extension here
+                    livePreviewExtension(app, modelRef.current),   // <--- Inject Live Preview Extension here
 
                     EditorView.theme({
                         "&": { height: "100%", fontSize: "var(--font-text-size)" },
