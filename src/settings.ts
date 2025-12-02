@@ -154,7 +154,7 @@ export class NovelistSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Subtract Words on Deletion')
-            .setDesc('If enabled, deleting text reduces your daily session count. If disabled, session count only goes up.')
+            .setDesc('If enabled, deleting words written TODAY reduces your session count. Deleting words written on previous days will NOT reduce your session count. If disabled, session count only goes up (Gross count).')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.statsSubtractOnDelete)
                 .onChange(async (value) => {
