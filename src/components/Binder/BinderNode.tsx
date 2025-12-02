@@ -319,19 +319,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                             isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
                         )
                     )}
-                    {/* Folder Note Indicator */}
-                    {isFolder && folderNote && (
-                        <div style={{
-                            position: 'absolute', 
-                            bottom: -2, 
-                            right: -2, 
-                            background: 'var(--background-primary)', 
-                            borderRadius: '50%',
-                            padding: 1
-                        }}>
-                             <FileText size={8} fill="currentColor" style={{opacity: 0.8}} />
-                        </div>
-                    )}
                 </div>
 
                 <div className="novelist-binder-title" onClick={handleTitleClick}>
