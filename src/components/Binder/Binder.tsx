@@ -53,6 +53,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
 
     // --- NEW STATE for Icon Map ---
     const [iconMap, setIconMap] = useState<Record<string, string>>({});
+    const [iconColorMap, setIconColorMap] = useState<Record<string, string>>({}); // NEW STATE
 
     // --- Selection & Expansion State ---
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -163,8 +164,10 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         if (currentProject) {
             const meta = projectManager.getProjectMetadata(currentProject);
             setIconMap(meta?.icons || {});
+            setIconColorMap(meta?.iconColors || {}); // NEW: Load colors
         } else {
             setIconMap({});
+            setIconColorMap({}); // NEW: Clear colors
         }
     }, [currentProject, refresh]);
 
@@ -556,6 +559,24 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         await projectManager.updateProjectMetadata(currentProject, { icons: newIconMap });
     };
 
+    // NEW: Callback to update icon colors
+    const handleSetIconColor = async (itemPath: string, color: string | null) => {
+        if (!currentProject) return;
+
+        // Optimistic UI update
+        const newColorMap = { ...iconColorMap };
+        if (color) {
+            newColorMap[itemPath] = color;
+        } else {
+            delete newColorMap[itemPath];
+        }
+        setIconColorMap(newColorMap);
+
+        // Persist change
+        await projectManager.updateProjectMetadata(currentProject, { iconColors: newColorMap });
+    };
+
+
     return (
         <div 
             className="novelist-binder-container" 
@@ -654,6 +675,8 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
                                 onToggleExpand={toggleExpansion}
                                 iconMap={iconMap}
                                 onSetIcon={handleSetIcon}
+                                iconColorMap={iconColorMap} // NEW PROP
+                                onSetIconColor={handleSetIconColor} // NEW PROP
                             />
                         ))}
                     </SortableContext>

@@ -323,7 +323,7 @@ notes: ""
         return count;
     }
 
-    getProjectMetadata(folder: TFolder) {
+getProjectMetadata(folder: TFolder) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return null;
         
@@ -339,10 +339,10 @@ notes: ""
             isArchived: fm.archived === true || fm.status === 'Archived',
             lastModified: marker.stat.mtime,
             createdTime: marker.stat.ctime,
-            // New fields for settings
             templates: fm.templates || [],
             mappings: fm.mappings || [],
-            icons: fm.icons || {}
+            icons: fm.icons || {},
+            iconColors: fm.iconColors || {} // ADDED THIS LINE
         };
     }
 
@@ -353,7 +353,8 @@ notes: ""
         archived?: boolean,
         templates?: DocumentTemplate[],
         mappings?: FolderMapping[],
-        icons?: Record<string, string> 
+        icons?: Record<string, string>,
+        iconColors?: Record<string, string> // ADDED THIS LINE
     }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -366,6 +367,7 @@ notes: ""
             if (data.templates !== undefined) fm.templates = data.templates;
             if (data.mappings !== undefined) fm.mappings = data.mappings;
             if (data.icons !== undefined) fm.icons = data.icons;
+            if (data.iconColors !== undefined) fm.iconColors = data.iconColors; // ADDED THIS LINE
         });
     }
 

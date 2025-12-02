@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
-import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FileQuestion } from 'lucide-react';
+import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FileQuestion, Palette } from 'lucide-react'; // Added Palette
 import * as icons from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -26,12 +26,15 @@ interface BinderNodeProps {
     onToggleExpand: (path: string) => void;
     iconMap: Record<string, string>;
     onSetIcon: (itemPath: string, iconName: string | null) => void;
+    iconColorMap: Record<string, string>; // NEW PROP
+    onSetIconColor: (itemPath: string, color: string | null) => void; // NEW PROP
 }
 
 export const BinderNode: React.FC<BinderNodeProps> = ({ 
     app, item, depth, activeFile, version, currentProject, 
     selectedPaths, onNodeClick, filterQuery = '',
-    expandedPaths, onToggleExpand, iconMap, onSetIcon
+    expandedPaths, onToggleExpand, iconMap, onSetIcon,
+    iconColorMap, onSetIconColor // Destructure new props
 }) => {
     const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(item.name);
@@ -142,16 +145,52 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             })
         );
 
-        if (iconMap[item.path]) {
-            menu.addItem((i) => i.setTitle("Remove Icon").setIcon("x-circle")
-                .onClick(() => {
-                    onSetIcon(item.path, null);
-                })
-            );
+        // NEW: Add "Set Icon Color" menu item
+        menu.addItem((i) => i.setTitle("Set Icon Color").setIcon("palette")
+            .onClick(() => {
+                // Create a hidden color input, trigger it, and handle the result
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.style.display = 'none';
+
+                // Set initial value if one exists
+                if (iconColorMap[item.path]) {
+                    colorInput.value = iconColorMap[item.path];
+                }
+
+                colorInput.onchange = () => {
+                    onSetIconColor(item.path, colorInput.value);
+                    document.body.removeChild(colorInput); // Clean up
+                };
+                
+                // Add a blur event to also clean up if the user clicks away
+                colorInput.onblur = () => {
+                    try { document.body.removeChild(colorInput); } catch (e) {}
+                };
+
+                document.body.appendChild(colorInput);
+                colorInput.click();
+            })
+        );
+        
+        // Conditionally show "Remove" options
+        if (iconMap[item.path] || iconColorMap[item.path]) {
+            menu.addSeparator();
+            if (iconMap[item.path]) {
+                menu.addItem((i) => i.setTitle("Remove Icon").setIcon("x-circle")
+                    .onClick(() => onSetIcon(item.path, null))
+                );
+            }
+            if (iconColorMap[item.path]) {
+                menu.addItem((i) => i.setTitle("Remove Icon Color").setIcon("x-circle")
+                    .onClick(() => onSetIconColor(item.path, null))
+                );
+            }
         }
         
         menu.addSeparator();
         menu.addItem((i) => i.setTitle("Rename").setIcon("pencil").onClick(() => setIsRenaming(true)));
+
         menu.addSeparator();
         menu.addItem((i) => i.setTitle("New Document").setIcon("file-plus")
             .onClick(() => { const t = isFolder ? item as TFolder : item.parent; if(t) projectManager.createNewItem(t, 'file'); }));
@@ -225,6 +264,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
     const rankDisplay = isFile ? getRank(app, item as TFile) : null;
     const customIconName = iconMap[item.path];
+    const customIconColor = iconColorMap[item.path]; // Get the color
     const IconComponent = customIconName ? (icons as any)[toPascalCase(customIconName)] || FileQuestion : null;
 
     if (!isVisible) return null;
@@ -256,7 +296,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                     <ChevronDown size={14} />
                 </div>
 
-                <div className="novelist-binder-icon">
+                <div className="novelist-binder-icon" style={{ color: customIconColor || 'inherit' }}>
                     {IconComponent ? <IconComponent size={14} /> : (
                         item.name === "Trash" ? <Trash2 size={14} /> : (
                             isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
@@ -301,6 +341,8 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                                 onToggleExpand={onToggleExpand}
                                 iconMap={iconMap}
                                 onSetIcon={onSetIcon}
+                                iconColorMap={iconColorMap} // Pass down
+                                onSetIconColor={onSetIconColor} // Pass down
                             />
                         ))}
                     </SortableContext>
