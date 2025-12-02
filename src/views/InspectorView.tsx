@@ -16,7 +16,9 @@ export class InspectorView extends ItemView {
 
     getViewType() { return VIEW_TYPE_INSPECTOR; }
     getDisplayText() { return "Inspector"; }
-    getIcon() { return "info"; }
+    
+    // Updated to 'glasses' for a more distinct look representing inspection
+    getIcon() { return "glasses"; }
 
     async onOpen() {
         this.root = createRoot(this.contentEl);
