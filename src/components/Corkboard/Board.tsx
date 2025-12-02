@@ -90,7 +90,7 @@ notes: ""
         const commands = app.commands;
         // @ts-ignore
         const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === name);
-        if (foundCommand) commands.executeCommandById(foundCommand.id);
+        if (foundCommand) commands.executeCommandById((foundCommand as any).id);
     };
 
     return (

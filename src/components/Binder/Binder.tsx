@@ -504,7 +504,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
                     // @ts-ignore
                     const commands = app.commands;
                     // @ts-ignore
-                    const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === plugin.settings.advancedReorderCommand);
+                    const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === plugin.settings.advancedReorderCommand) as any;
                     if (foundCommand) commands.executeCommandById(foundCommand.id);
                 }
                 
