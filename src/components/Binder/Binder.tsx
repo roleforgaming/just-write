@@ -576,6 +576,9 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         await projectManager.updateProjectMetadata(currentProject, { iconColors: newColorMap });
     };
 
+    // Helper for drag overlay
+    const draggedItem = activeDragId ? app.vault.getAbstractFileByPath(activeDragId) : null;
+    const draggedName = draggedItem instanceof TFile ? draggedItem.basename : draggedItem?.name;
 
     return (
         <div 
@@ -692,7 +695,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
                                 ) : (
                                     <div className="novelist-drag-single">
                                         <FileText size={16} />
-                                        <span>{app.vault.getAbstractFileByPath(activeDragId)?.name}</span>
+                                        <span>{draggedName}</span>
                                     </div>
                                 )}
                             </div>

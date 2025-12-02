@@ -36,8 +36,11 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     expandedPaths, onToggleExpand, iconMap, onSetIcon,
     iconColorMap, onSetIconColor
 }) => {
+    // Determine the display name (Basename for files, Name for folders)
+    const displayName = item instanceof TFile ? item.basename : item.name;
+
     const [isRenaming, setIsRenaming] = useState(false);
-    const [renameValue, setRenameValue] = useState(item.name);
+    const [renameValue, setRenameValue] = useState(displayName);
 
     const isFolder = item instanceof TFolder;
     const isFile = item instanceof TFile;
@@ -105,11 +108,24 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
     const handleRenameSubmit = async () => {
         setIsRenaming(false);
-        if (renameValue === item.name || !renameValue.trim()) {
-            setRenameValue(item.name);
+        const trimmed = renameValue.trim();
+
+        if (trimmed === displayName || !trimmed) {
+            setRenameValue(displayName);
             return;
         }
-        const newPath = item.parent ? `${item.parent.path}/${renameValue.trim()}` : renameValue.trim();
+
+        // Handle File Extension preservation
+        let newName = trimmed;
+        if (isFile) {
+            // Append extension if user didn't type it (assuming they are renaming just basename)
+            // But renameValue currently holds just the basename, so we must add extension.
+            // Obsidian's renameFile expects the full name with extension.
+            newName = `${trimmed}.${(item as TFile).extension}`;
+        }
+
+        const newPath = item.parent ? `${item.parent.path}/${newName}` : newName;
+        
         try {
             await app.fileManager.renameFile(item, newPath);
             
@@ -118,13 +134,13 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             if (isFolder && folderNote) {
                 // The folder note itself is still named index.md, but we want to update the 'title' metadata
                 await app.fileManager.processFrontMatter(folderNote, (fm) => {
-                    fm.title = renameValue.trim();
+                    fm.title = trimmed;
                 });
             }
 
         } catch {
             new Notice("Rename failed.");
-            setRenameValue(item.name);
+            setRenameValue(displayName);
         }
     };
 
@@ -332,7 +348,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                             onKeyDown={(e) => { if(e.key === 'Enter') handleRenameSubmit(); if(e.key==='Escape') setIsRenaming(false); }}
                             style={{ width: '100%' }}
                         />
-                    ) : item.name}
+                    ) : displayName}
                 </div>
 
                 {inTrash && <span style={{fontSize: '0.7em', opacity: 0.5, marginLeft: 5}}>(Read Only)</span>}
