@@ -61,8 +61,10 @@ export class ProjectManager {
             const rootFolder = await this.app.vault.createFolder(rootPath);
             
             // 2. Create Project Marker
+            // Added title property here
             const frontmatter = `---
 type: ${PROJECT_TYPE_KEY}
+title: ${projectName}
 status: Planning
 author: 
 deadline: 
@@ -308,7 +310,9 @@ notes: ""
 
             // 4. Fallback Default Content if no template found or empty
             if (!content) {
+                // Added title property here
                 content = `---
+title: ${name}
 rank: ${newRank}
 status: Draft
 label: Scene
@@ -317,13 +321,17 @@ notes: ""
 ---
 `;
             } else {
-                // If template used, ensure rank is injected/updated if frontmatter exists
+                // If template used, ensure rank AND title are injected/updated if frontmatter exists
                 if (content.startsWith('---')) {
-                    if (!content.includes('rank:')) {
-                         content = content.replace('---', `---\nrank: ${newRank}`);
+                    let injections = '';
+                    if (!content.includes('rank:')) injections += `rank: ${newRank}\n`;
+                    if (!content.includes('title:')) injections += `title: ${name}\n`;
+                    
+                    if (injections) {
+                        content = content.replace('---', `---\n${injections}`);
                     }
                 } else {
-                    content = `---\nrank: ${newRank}\n---\n${content}`;
+                    content = `---\ntitle: ${name}\nrank: ${newRank}\n---\n${content}`;
                 }
             }
 
