@@ -7,12 +7,13 @@ import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
 import { CreateProjectModal } from '../../modals/CreateProjectModal';
 import { Book, FilePlus, FolderPlus, LayoutDashboard, FileText, Search, X } from 'lucide-react';
+import NovelistPlugin from '../../main';
 
-// Hardcoded to prevent import path issues
 const VIEW_TYPE_DASHBOARD = "novelist-dashboard-view";
 
 interface BinderProps {
     app: App;
+    plugin: NovelistPlugin; // Updated Interface
 }
 
 interface ContentSearchResult {
@@ -24,7 +25,7 @@ interface ContentSearchResult {
     }[];
 }
 
-export const Binder: React.FC<BinderProps> = ({ app }) => {
+export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
     const projectManager = useMemo(() => new ProjectManager(app), [app]);
     const containerRef = useRef<HTMLDivElement>(null);
     
@@ -61,7 +62,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+        useSensor(PointerSensor, { activationConstraint: { distance: plugin.settings.binderDragSensitivity || 8 } })
     );
 
     // --- Project Loading & Sorting ---
@@ -107,7 +108,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             if (!aIsFolder && bIsFolder) return 1;
 
             if (aIsFolder && bIsFolder) {
-                const fixedOrder = ['Manuscript', 'Research', 'Story Bible', 'Trash'];
+                const fixedOrder = plugin.settings.binderSortOrder || ['Manuscript', 'Research', 'Story Bible', 'Trash'];
                 const aIndex = fixedOrder.indexOf(a.name);
                 const bIndex = fixedOrder.indexOf(b.name);
                 if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
@@ -117,7 +118,7 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
             }
             return getRank(app, a as TFile) - getRank(app, b as TFile);
         });
-    }, [app]);
+    }, [app, plugin.settings.binderSortOrder]);
 
     const refresh = useCallback(() => {
         const current = currentProjectRef.current;
@@ -215,10 +216,10 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
 
             setContentResults(results);
             setIsSearching(false);
-        }, 500); 
+        }, plugin.settings.advancedSearchDelay || 500); 
 
         return () => clearTimeout(delayDebounceFn);
-    }, [contentQuery, currentProject, app.vault]);
+    }, [contentQuery, currentProject, app.vault, plugin.settings.advancedSearchDelay]);
 
     const getAllFilesRecursively = (folder: TFolder): TFile[] => {
         let files: TFile[] = [];
@@ -497,6 +498,16 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
                 });
 
                 await Promise.all(updatePromises);
+                
+                // Use custom command from settings if available
+                if (plugin.settings.advancedReorderCommand) {
+                    // @ts-ignore
+                    const commands = app.commands;
+                    // @ts-ignore
+                    const foundCommand = Object.values(commands.commands).find((cmd: any) => cmd.name === plugin.settings.advancedReorderCommand);
+                    if (foundCommand) commands.executeCommandById(foundCommand.id);
+                }
+                
                 (app as any).workspace.trigger('novelist:sort-update');
             }
         }
@@ -505,7 +516,8 @@ export const Binder: React.FC<BinderProps> = ({ app }) => {
     const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const val = e.target.value;
         if (val === '__CREATE_NEW__') {
-            new CreateProjectModal(app, (folder) => { loadProjects(); setCurrentProject(folder); }).open();
+            // FIXED: Passing plugin instance to CreateProjectModal
+            new CreateProjectModal(app, plugin, (folder) => { loadProjects(); setCurrentProject(folder); }).open();
             return;
         }
         const proj = availableProjects.find(p => p.path === val);

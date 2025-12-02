@@ -51,11 +51,14 @@ export class ProjectManager {
         return projects;
     }
 
-    async createProject(projectName: string, parentPath: string = ""): Promise<TFolder | null> {
+    async createProject(projectName: string, structure: string, parentPath: string = ""): Promise<TFolder | null> {
         const rootPath = parentPath ? normalizePath(`${parentPath}/${projectName}`) : projectName;
         
         try {
+            // 1. Create Root Folder
             const rootFolder = await this.app.vault.createFolder(rootPath);
+            
+            // 2. Create Project Marker
             const frontmatter = `---
 type: ${PROJECT_TYPE_KEY}
 status: Planning
@@ -66,12 +69,39 @@ deadline:
 Project notes and synopsis go here.
 `;
             await this.app.vault.create(`${rootPath}/${PROJECT_MARKER_FILE}`, frontmatter);
-            await this.app.vault.createFolder(`${rootPath}/Manuscript`);
-            await this.app.vault.createFolder(`${rootPath}/Research`);
-            await this.app.vault.createFolder(`${rootPath}/Story Bible`);
-            await this.app.vault.createFolder(`${rootPath}/Story Bible/Characters`);
-            await this.app.vault.createFolder(`${rootPath}/Story Bible/Locations`);
-            await this.app.vault.createFolder(`${rootPath}/Trash`);
+
+            // 3. Process Template Structure
+            // Split by newline, trim whitespace, remove empty lines
+            const paths = structure.split('\n')
+                .map(p => p.trim())
+                .filter(p => p.length > 0);
+
+            // We must ensure 'Trash' exists for the plugin to function correctly
+            if (!paths.includes('Trash')) {
+                paths.push('Trash');
+            }
+
+            // Sort paths alphabetically. This generally ensures parent folders (e.g., "A") 
+            // come before subfolders (e.g., "A/B"), preventing "folder does not exist" errors.
+            paths.sort();
+
+            for (const relPath of paths) {
+                const fullPath = normalizePath(`${rootPath}/${relPath}`);
+                // Check if it already exists (to handle duplicates or manual creation)
+                const existing = this.app.vault.getAbstractFileByPath(fullPath);
+                if (!existing) {
+                    // Create folder. Note: This creates folders sequentially. 
+                    // If the template has "A/B" but not "A", Obsidian's API might fail if "A" doesn't exist yet.
+                    // Ideally, templates should be explicit, or we write a recursive creator.
+                    // For now, assuming the template is well-formed or the sort helps.
+                    try {
+                        await this.app.vault.createFolder(fullPath);
+                    } catch (e) {
+                        // If direct creation fails, try recursively creating parents
+                        await this.ensureFolderExists(fullPath);
+                    }
+                }
+            }
 
             new Notice(`Project "${projectName}" created!`);
             return rootFolder;
@@ -82,10 +112,35 @@ Project notes and synopsis go here.
         }
     }
 
+    // Helper to create nested folders if parents are missing
+    private async ensureFolderExists(path: string) {
+        const dirs = path.split('/');
+        dirs.pop(); // Remove the last part if we assume 'path' is the folder we want to create? 
+        // No, 'createFolder' expects the full path.
+        
+        let currentPath = "";
+        const segments = path.split("/");
+        
+        for (const segment of segments) {
+            currentPath = currentPath === "" ? segment : `${currentPath}/${segment}`;
+            const existing = this.app.vault.getAbstractFileByPath(currentPath);
+            if (!existing) {
+                await this.app.vault.createFolder(currentPath);
+            }
+        }
+    }
+
     getTrashFolder(projectRoot: TFolder): TFolder | null {
-        return projectRoot.children.find(
+        // Look for immediate child named Trash
+        const trash = projectRoot.children.find(
             child => child instanceof TFolder && child.name === "Trash"
-        ) as TFolder || null;
+        ) as TFolder;
+        
+        if (trash) return trash;
+
+        // Fallback: If user renamed it (not recommended) or using custom template without explicit Trash
+        // We rely on name "Trash" for logic usually.
+        return null;
     }
 
     isInTrash(item: TAbstractFile): boolean {

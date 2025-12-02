@@ -1,0 +1,73 @@
+{
+  "startupBehavior": "dashboard",
+  "projectTemplates": [
+    {
+      "name": "Standard Novel",
+      "structure": "Manuscript\nResearch\nStory Bible\nStory Bible/Characters\nStory Bible/Locations\nTrash"
+    },
+    {
+      "name": "Blank",
+      "structure": "Trash"
+    },
+    {
+      "name": "World Building",
+      "structure": "Locations\nLocations/Worlds"
+    }
+  ],
+  "documentTemplates": [
+    {
+      "name": "Character",
+      "path": ""
+    },
+    {
+      "name": "",
+      "path": ""
+    },
+    {
+      "name": "",
+      "path": ""
+    }
+  ],
+  "folderMappings": [],
+  "defaultDocumentTemplate": "",
+  "binderShowRank": true,
+  "binderSortOrder": [
+    "Manuscript",
+    "Research",
+    "Story Bible",
+    "Trash"
+  ],
+  "binderDragSensitivity": 8,
+  "corkboardDefaultSize": "medium",
+  "corkboardShowIcon": true,
+  "corkboardShowAccent": true,
+  "corkboardDoubleClickAction": "current",
+  "scriveningsMaxWidth": 800,
+  "scriveningsCenterAlign": true,
+  "scriveningsSeparatorStyle": "dashed",
+  "scriveningsLivePreviewHeaders": true,
+  "scriveningsLivePreviewBlockquotes": true,
+  "scriveningsLivePreviewHR": true,
+  "scriveningsLivePreviewImages": true,
+  "inspectorStatusOptions": [
+    "Draft",
+    "Revised",
+    "Final",
+    "Done"
+  ],
+  "inspectorLabelOptions": [
+    "Chapter",
+    "Scene",
+    "Research",
+    "Idea",
+    "Character",
+    "Location"
+  ],
+  "inspectorDefaultTab": "synopsis",
+  "dashboardDefaultView": "grid",
+  "dashboardDefaultSort": "modified",
+  "dashboardWordCountFolder": "Manuscript",
+  "advancedAutoSaveDelay": 1000,
+  "advancedSearchDelay": 500,
+  "advancedReorderCommand": "Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on."
+}

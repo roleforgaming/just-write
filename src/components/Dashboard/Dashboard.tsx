@@ -5,25 +5,27 @@ import { CreateProjectModal } from '../../modals/CreateProjectModal';
 import { ProjectCard } from './ProjectCard';
 import { ProjectList } from './ProjectList';
 import { Plus, ChevronDown, ChevronRight, Filter, ArrowUpDown, LayoutGrid, List } from 'lucide-react';
+import NovelistPlugin from '../../main';
 
 interface DashboardProps {
     app: App;
+    plugin: NovelistPlugin; // Updated Interface
 }
 
 type ViewMode = 'grid' | 'list';
 type SortKey = 'modified' | 'created' | 'name' | 'wordCount' | 'status';
 
-export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
     const [projects, setProjects] = useState<any[]>([]);
     const [showArchived, setShowArchived] = useState(false);
     
     // View State
-    const [viewMode, setViewMode] = useState<ViewMode>('grid');
+    const [viewMode, setViewMode] = useState<ViewMode>(plugin.settings.dashboardDefaultView || 'grid');
 
     // Sorting and Filtering State
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
-        key: 'modified', 
+        key: plugin.settings.dashboardDefaultSort || 'modified', 
         direction: 'desc' 
     });
 
@@ -101,7 +103,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ app }) => {
     }, [projects, filterStatus, sortConfig, wordCounts, showArchived]);
 
     const handleCreate = () => {
-        new CreateProjectModal(app, () => load()).open();
+        // FIXED: Passing plugin instance to CreateProjectModal
+        new CreateProjectModal(app, plugin, () => load()).open();
     };
 
     return (
