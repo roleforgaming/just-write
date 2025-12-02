@@ -1,8 +1,8 @@
-import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, TFolder } from 'obsidian';
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Inspector } from '../components/Inspector';
-import { ProjectManager } from '../utils/projectManager'; // Fixed: Import added
+import { ProjectManager } from '../utils/projectManager';
 
 export const VIEW_TYPE_INSPECTOR = "novelist-inspector-view";
 
@@ -20,7 +20,7 @@ export class InspectorView extends ItemView {
 
     async onOpen() {
         this.root = createRoot(this.contentEl);
-        this.renderReact(); // Fixed: Removed malformed code from inside parenthesis
+        this.renderReact();
         
         // 1. Listen for standard file opening
         this.registerEvent(
@@ -32,10 +32,21 @@ export class InspectorView extends ItemView {
             })
         );
 
-        // 2. Listen for our Custom Event from Corkboard
+        // 2. Listen for our Custom Event from Corkboard/Outliner/Binder
         this.registerEvent(
-            (this.app.workspace as any).on('novelist:select-file', (file: TFile) => {
-                this.selectedFile = file;
+            (this.app.workspace as any).on('novelist:select-file', (file: TFile | TFolder) => {
+                // If it is a folder, check for a folder note immediately to show that in inspector
+                if (file instanceof TFolder) {
+                     const pm = new ProjectManager(this.app);
+                     const folderNote = pm.getFolderNote(file);
+                     if (folderNote) {
+                         this.selectedFile = folderNote;
+                     } else {
+                         this.selectedFile = null; // Can't inspect a raw folder without note
+                     }
+                } else {
+                    this.selectedFile = file;
+                }
                 this.renderReact();
             })
         );
@@ -43,7 +54,10 @@ export class InspectorView extends ItemView {
 
     renderReact() {
         // Fallback to active file if no manual selection yet
-        const file = this.selectedFile || this.app.workspace.getActiveFile();
+        let file = this.selectedFile || this.app.workspace.getActiveFile();
+        
+        // Final fallback: If current selection is null, but there's a file active, use it?
+        // No, stay consistent with selection.
         
         if (!file || file.extension !== 'md') {
             this.root?.render(
@@ -54,7 +68,6 @@ export class InspectorView extends ItemView {
             return;
         }
 
-        // Fixed: Moved Project Check logic inside the method
         const pm = new ProjectManager(this.app);
         const isProjectFile = pm.getProjectForFile(file);
 

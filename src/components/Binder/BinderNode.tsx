@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
-import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FileQuestion, Palette } from 'lucide-react'; // Added Palette
+import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FileQuestion, Palette, FilePlus2 } from 'lucide-react';
 import * as icons from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
 import { ConfirmModal } from '../../modals/ConfirmModal';
-import { IconPickerModal } from '../../modals/IconPickerModal'; // CORRECTED: Removed .tsx extension
+import { IconPickerModal } from '../../modals/IconPickerModal';
 
 // Helper to convert kebab-case to PascalCase
 const toPascalCase = (str: string) => str.replace(/(^\w|-\w)/g, g => g.replace('-', '').toUpperCase());
@@ -26,15 +26,15 @@ interface BinderNodeProps {
     onToggleExpand: (path: string) => void;
     iconMap: Record<string, string>;
     onSetIcon: (itemPath: string, iconName: string | null) => void;
-    iconColorMap: Record<string, string>; // NEW PROP
-    onSetIconColor: (itemPath: string, color: string | null) => void; // NEW PROP
+    iconColorMap: Record<string, string>;
+    onSetIconColor: (itemPath: string, color: string | null) => void;
 }
 
 export const BinderNode: React.FC<BinderNodeProps> = ({ 
     app, item, depth, activeFile, version, currentProject, 
     selectedPaths, onNodeClick, filterQuery = '',
     expandedPaths, onToggleExpand, iconMap, onSetIcon,
-    iconColorMap, onSetIconColor // Destructure new props
+    iconColorMap, onSetIconColor
 }) => {
     const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(item.name);
@@ -48,6 +48,14 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     const projectManager = new ProjectManager(app);
     const inTrash = projectManager.isInTrash(item);
     const isTrashFolder = currentProject && item.path === `${currentProject.path}/Trash`;
+
+    // Folder Note Check
+    const folderNote = useMemo(() => {
+        if (!isFolder) return null;
+        return projectManager.getFolderNote(item as TFolder);
+    }, [isFolder, item, version]);
+
+    const isFolderNoteActive = activeFile && folderNote && activeFile.path === folderNote.path;
 
     const matchesFilter = (node: TAbstractFile, query: string): boolean => {
         if (!query) return true;
@@ -104,9 +112,28 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         const newPath = item.parent ? `${item.parent.path}/${renameValue.trim()}` : renameValue.trim();
         try {
             await app.fileManager.renameFile(item, newPath);
+            // Folder Note Rename Logic
+            if (folderNote && isFolder) {
+                const oldNotePath = `${newPath}/${item.name}.md`;
+                const newNotePath = `${newPath}/${renameValue.trim()}.md`;
+                const movedNote = app.vault.getAbstractFileByPath(oldNotePath);
+                if (movedNote) await app.fileManager.renameFile(movedNote, newNotePath);
+            }
+
         } catch {
             new Notice("Rename failed.");
             setRenameValue(item.name);
+        }
+    };
+
+    // Handle clicking the text itself
+    const handleTitleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onNodeClick(e, item);
+        
+        // If it is a folder and has a folder note, open it
+        if (isFolder && folderNote) {
+            app.workspace.getLeaf(false).openFile(folderNote);
         }
     };
 
@@ -137,6 +164,21 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             return;
         }
 
+        // Folder Note Option
+        if (isFolder) {
+            if (folderNote) {
+                menu.addItem((i) => i.setTitle("Open Folder Note").setIcon("file-text")
+                    .onClick(() => app.workspace.getLeaf(false).openFile(folderNote)));
+            } else {
+                menu.addItem((i) => i.setTitle("Create Folder Note").setIcon("file-plus-2")
+                    .onClick(async () => {
+                        const note = await projectManager.createFolderNote(item as TFolder);
+                        app.workspace.getLeaf(false).openFile(note);
+                    }));
+            }
+            menu.addSeparator();
+        }
+
         menu.addItem((i) => i.setTitle("Change Icon").setIcon("image-plus")
             .onClick(() => {
                 new IconPickerModal(app, (iconName) => {
@@ -145,47 +187,28 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             })
         );
 
-        // NEW: Add "Set Icon Color" menu item
         menu.addItem((i) => i.setTitle("Set Icon Color").setIcon("palette")
             .onClick(() => {
-                // Create a hidden color input, trigger it, and handle the result
                 const colorInput = document.createElement('input');
                 colorInput.type = 'color';
                 colorInput.style.display = 'none';
-
-                // Set initial value if one exists
-                if (iconColorMap[item.path]) {
-                    colorInput.value = iconColorMap[item.path];
-                }
+                if (iconColorMap[item.path]) colorInput.value = iconColorMap[item.path];
 
                 colorInput.onchange = () => {
                     onSetIconColor(item.path, colorInput.value);
-                    document.body.removeChild(colorInput); // Clean up
+                    document.body.removeChild(colorInput);
                 };
                 
-                // Add a blur event to also clean up if the user clicks away
-                colorInput.onblur = () => {
-                    try { document.body.removeChild(colorInput); } catch (e) {}
-                };
-
+                colorInput.onblur = () => { try { document.body.removeChild(colorInput); } catch (e) {} };
                 document.body.appendChild(colorInput);
                 colorInput.click();
             })
         );
         
-        // Conditionally show "Remove" options
         if (iconMap[item.path] || iconColorMap[item.path]) {
             menu.addSeparator();
-            if (iconMap[item.path]) {
-                menu.addItem((i) => i.setTitle("Remove Icon").setIcon("x-circle")
-                    .onClick(() => onSetIcon(item.path, null))
-                );
-            }
-            if (iconColorMap[item.path]) {
-                menu.addItem((i) => i.setTitle("Remove Icon Color").setIcon("x-circle")
-                    .onClick(() => onSetIconColor(item.path, null))
-                );
-            }
+            if (iconMap[item.path]) menu.addItem((i) => i.setTitle("Remove Icon").setIcon("x-circle").onClick(() => onSetIcon(item.path, null)));
+            if (iconColorMap[item.path]) menu.addItem((i) => i.setTitle("Remove Icon Color").setIcon("x-circle").onClick(() => onSetIconColor(item.path, null)));
         }
         
         menu.addSeparator();
@@ -204,7 +227,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         }
 
         menu.addSeparator();
-        
         const leaf = app.workspace.getMostRecentLeaf();
         app.workspace.trigger("file-menu", menu, item, "file-explorer", leaf);
         
@@ -220,18 +242,11 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                             {
                                 text: 'Move to Project Trash Instead?',
                                 action: () => {
-                                    if (currentProject) {
-                                        projectManager.moveToTrash(item, currentProject);
-                                    } else {
-                                        new Notice("Could not find project context to move to trash.");
-                                    }
+                                    if (currentProject) projectManager.moveToTrash(item, currentProject);
+                                    else new Notice("Could not find project context to move to trash.");
                                 }
                             },
-                            {
-                                text: 'Delete Permanently',
-                                action: () => projectManager.permanentlyDelete(item),
-                                warning: true
-                            }
+                            { text: 'Delete Permanently', action: () => projectManager.permanentlyDelete(item), warning: true }
                         ]
                     ).open();
                 })
@@ -264,7 +279,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
     const rankDisplay = isFile ? getRank(app, item as TFile) : null;
     const customIconName = iconMap[item.path];
-    const customIconColor = iconColorMap[item.path]; // Get the color
+    const customIconColor = iconColorMap[item.path]; 
     const IconComponent = customIconName ? (icons as any)[toPascalCase(customIconName)] || FileQuestion : null;
 
     if (!isVisible) return null;
@@ -273,12 +288,12 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         <div className="novelist-binder-item" ref={setNodeRef} style={style}>
             <div 
                 className={`novelist-binder-row 
-                    ${isActive ? 'is-active' : ''} 
+                    ${isActive || isFolderNoteActive ? 'is-active' : ''} 
                     ${isSelected ? 'is-selected' : ''}
                     ${isDropTarget ? 'is-drop-target' : ''}
                 `}
                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
-                onClick={(e) => onNodeClick(e, item)}
+                onClick={(e) => onNodeClick(e, item)} 
                 onDoubleClick={handleDoubleClick}
                 onContextMenu={handleContextMenu}
                 {...attributes}
@@ -296,15 +311,28 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                     <ChevronDown size={14} />
                 </div>
 
-                <div className="novelist-binder-icon" style={{ color: customIconColor || 'inherit' }}>
+                <div className="novelist-binder-icon" style={{ color: customIconColor || 'inherit', position: 'relative' }}>
                     {IconComponent ? <IconComponent size={14} /> : (
                         item.name === "Trash" ? <Trash2 size={14} /> : (
                             isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
                         )
                     )}
+                    {/* Folder Note Indicator */}
+                    {isFolder && folderNote && (
+                        <div style={{
+                            position: 'absolute', 
+                            bottom: -2, 
+                            right: -2, 
+                            background: 'var(--background-primary)', 
+                            borderRadius: '50%',
+                            padding: 1
+                        }}>
+                             <FileText size={8} fill="currentColor" style={{opacity: 0.8}} />
+                        </div>
+                    )}
                 </div>
 
-                <div className="novelist-binder-title">
+                <div className="novelist-binder-title" onClick={handleTitleClick}>
                     {isRenaming ? (
                         <input 
                             autoFocus value={renameValue}
@@ -341,8 +369,8 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                                 onToggleExpand={onToggleExpand}
                                 iconMap={iconMap}
                                 onSetIcon={onSetIcon}
-                                iconColorMap={iconColorMap} // Pass down
-                                onSetIconColor={onSetIconColor} // Pass down
+                                iconColorMap={iconColorMap} 
+                                onSetIconColor={onSetIconColor} 
                             />
                         ))}
                     </SortableContext>

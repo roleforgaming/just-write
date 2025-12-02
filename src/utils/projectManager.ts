@@ -216,6 +216,38 @@ Project notes and synopsis go here.
         new Notice(`Deleted "${item.name}" permanently.`);
     }
 
+    // --- Folder Note Utilities ---
+
+    /**
+     * Gets the folder note for a specific folder.
+     * Convention: The note must be inside the folder and have the same name (e.g. Folder/Folder.md)
+     */
+    getFolderNote(folder: TFolder): TFile | null {
+        const noteName = `${folder.name}.md`;
+        const file = folder.children.find(c => c.name === noteName && c instanceof TFile);
+        return file as TFile || null;
+    }
+
+    /**
+     * Creates a folder note for the given folder if it doesn't exist.
+     */
+    async createFolderNote(folder: TFolder): Promise<TFile> {
+        const existing = this.getFolderNote(folder);
+        if (existing) return existing;
+
+        const path = `${folder.path}/${folder.name}.md`;
+        
+        // Use default content
+        const content = `---
+label: Folder
+status: Planning
+synopsis: ""
+notes: ""
+---
+`;
+        return await this.app.vault.create(path, content);
+    }
+
     // --- Updated Logic: Usage of Templates ---
 
     async createNewItem(parentFolder: TFolder, type: 'file' | 'folder', baseName = "Untitled") {
@@ -285,17 +317,11 @@ notes: ""
 `;
             } else {
                 // If template used, ensure rank is injected/updated if frontmatter exists
-                // Simple regex replacement to avoid heavy parsing for speed, or append if missing
                 if (content.startsWith('---')) {
-                    // Try to inject rank if not present, or replace it? 
-                    // Simpler: Just append the rank to the end of the frontmatter block
-                    // or let the user handle ranks manually in templates.
-                    // For now, let's inject rank
                     if (!content.includes('rank:')) {
                          content = content.replace('---', `---\nrank: ${newRank}`);
                     }
                 } else {
-                    // Prepend frontmatter
                     content = `---\nrank: ${newRank}\n---\n${content}`;
                 }
             }
@@ -323,7 +349,7 @@ notes: ""
         return count;
     }
 
-getProjectMetadata(folder: TFolder) {
+    getProjectMetadata(folder: TFolder) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return null;
         
@@ -342,7 +368,7 @@ getProjectMetadata(folder: TFolder) {
             templates: fm.templates || [],
             mappings: fm.mappings || [],
             icons: fm.icons || {},
-            iconColors: fm.iconColors || {} // ADDED THIS LINE
+            iconColors: fm.iconColors || {} 
         };
     }
 
@@ -354,7 +380,7 @@ getProjectMetadata(folder: TFolder) {
         templates?: DocumentTemplate[],
         mappings?: FolderMapping[],
         icons?: Record<string, string>,
-        iconColors?: Record<string, string> // ADDED THIS LINE
+        iconColors?: Record<string, string>
     }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -367,15 +393,32 @@ getProjectMetadata(folder: TFolder) {
             if (data.templates !== undefined) fm.templates = data.templates;
             if (data.mappings !== undefined) fm.mappings = data.mappings;
             if (data.icons !== undefined) fm.icons = data.icons;
-            if (data.iconColors !== undefined) fm.iconColors = data.iconColors; // ADDED THIS LINE
+            if (data.iconColors !== undefined) fm.iconColors = data.iconColors;
         });
     }
 
     async renameProject(folder: TFolder, newName: string) {
         if (folder.name === newName) return;
         const newPath = normalizePath(`${folder.parent?.path || ''}/${newName}`);
+        
+        // Check for folder note to rename it simultaneously
+        const folderNote = this.getFolderNote(folder);
+
         try {
             await this.app.fileManager.renameFile(folder, newPath);
+            
+            // If folder note existed, it moved with the folder but has old name
+            if (folderNote) {
+                // New path is newPath/OldName.md
+                // We want newPath/NewName.md
+                const movedNotePath = `${newPath}/${folderNote.name}`;
+                const movedNote = this.app.vault.getAbstractFileByPath(movedNotePath);
+                
+                if (movedNote && movedNote instanceof TFile) {
+                    await this.app.fileManager.renameFile(movedNote, `${newPath}/${newName}.md`);
+                }
+            }
+
         } catch {
             new Notice("Could not rename project. Name might already exist.");
         }
