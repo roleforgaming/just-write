@@ -12,6 +12,19 @@ import { IconPickerModal } from '../../modals/IconPickerModal';
 // Helper to convert kebab-case to PascalCase
 const toPascalCase = (str: string) => str.replace(/(^\w|-\w)/g, g => g.replace('-', '').toUpperCase());
 
+// Helper to determine default icon based on extension
+const getFileIcon = (extension: string) => {
+    const ext = extension.toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) return icons.FileImage;
+    if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) return icons.FileAudio;
+    if (['mp4', 'webm', 'ogv', 'mov', 'avi', 'mkv'].includes(ext)) return icons.FileVideo;
+    if (['js', 'ts', 'css', 'html', 'json', 'py', 'rb'].includes(ext)) return icons.FileCode;
+    if (['csv', 'xls', 'xlsx'].includes(ext)) return icons.FileSpreadsheet;
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return (icons as any).FileArchive || icons.Archive;
+    if (ext === 'canvas') return (icons as any).LayoutTemplate || icons.Layout;
+    return icons.FileText;
+};
+
 interface BinderNodeProps {
     app: App;
     item: TAbstractFile;
@@ -298,7 +311,18 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     const rankDisplay = isFile ? getRank(app, item as TFile) : null;
     const customIconName = iconMap[item.path];
     const customIconColor = iconColorMap[item.path]; 
-    const IconComponent = customIconName ? (icons as any)[toPascalCase(customIconName)] || FileQuestion : null;
+    
+    // Determine Icon Component
+    let IconComponent: any;
+    if (customIconName) {
+        IconComponent = (icons as any)[toPascalCase(customIconName)] || FileQuestion;
+    } else if (item.name === "Trash") {
+        IconComponent = Trash2;
+    } else if (isFolder) {
+        IconComponent = !effectiveExpanded ? Folder : FolderOpen;
+    } else {
+        IconComponent = getFileIcon((item as TFile).extension);
+    }
 
     if (!isVisible) return null;
 
@@ -330,11 +354,7 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                 </div>
 
                 <div className="novelist-binder-icon" style={{ color: customIconColor || 'inherit', position: 'relative' }}>
-                    {IconComponent ? <IconComponent size={14} /> : (
-                        item.name === "Trash" ? <Trash2 size={14} /> : (
-                            isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
-                        )
-                    )}
+                    <IconComponent size={14} />
                 </div>
 
                 <div className="novelist-binder-title" onClick={handleTitleClick}>
