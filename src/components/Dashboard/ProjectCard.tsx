@@ -78,7 +78,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta }) =
                 .onClick(() => {
                      new ConfirmModal(app, "Delete Project", 
                      `Are you sure you want to delete "${folder.name}" and all its contents? This cannot be undone.`,
-                     () => pm.permanentlyDelete(folder)
+                     [
+                         { text: 'Cancel', action: () => {} },
+                         { text: 'Delete Project', action: () => pm.permanentlyDelete(folder), warning: true }
+                     ]
                      ).open();
                 });
         });

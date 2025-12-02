@@ -114,7 +114,10 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
         if (isTrashFolder) {
             menu.addItem((i) => i.setTitle("Empty Trash").setIcon("trash-2").setWarning(true)
-                .onClick(() => new ConfirmModal(app, "Empty Trash", "Delete all?", () => projectManager.emptyTrash(item as TFolder)).open()));
+                .onClick(() => new ConfirmModal(app, "Empty Trash", "Are you sure you want to delete all items in the trash? This cannot be undone.", [
+                    { text: 'Cancel', action: () => {} },
+                    { text: 'Empty Trash', action: () => projectManager.emptyTrash(item as TFolder), warning: true }
+                ]).open()));
             menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
             return;
         }
@@ -122,7 +125,10 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         if (inTrash) {
             menu.addItem((i) => i.setTitle("Restore").setIcon("rotate-ccw").onClick(() => projectManager.restoreFromTrash(item)));
             menu.addItem((i) => i.setTitle("Delete Permanently").setIcon("x-circle").setWarning(true)
-                .onClick(() => new ConfirmModal(app, "Delete", `Delete "${item.name}"?`, () => projectManager.permanentlyDelete(item)).open()));
+                .onClick(() => new ConfirmModal(app, "Delete Permanently", `Are you sure you want to permanently delete "${item.name}"? This action cannot be undone.`, [
+                    { text: 'Cancel', action: () => {} },
+                    { text: 'Delete Permanently', action: () => projectManager.permanentlyDelete(item), warning: true }
+                ]).open()));
             menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
             return;
         }
@@ -142,9 +148,39 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
         menu.addSeparator();
         
-        // Fix: Use getMostRecentLeaf() instead of getLeaf(false) to avoid unwanted creation of new tabs
         const leaf = app.workspace.getMostRecentLeaf();
         app.workspace.trigger("file-menu", menu, item, "file-explorer", leaf);
+        
+        // Add "Delete Permanently" at the very bottom of the context menu
+        if (currentProject && item.path !== currentProject.path && item.name !== "project.md") {
+            menu.addSeparator();
+            menu.addItem((i) => i.setTitle("Delete Permanently").setIcon("x-circle").setWarning(true)
+                .onClick(() => {
+                    new ConfirmModal(app, 
+                        `Permanently delete "${item.name}"?`,
+                        "This action cannot be undone. Are you sure you want to permanently delete this item?",
+                        [
+                            { text: 'Cancel', action: () => {} },
+                            {
+                                text: 'Move to Project Trash Instead?',
+                                action: () => {
+                                    if (currentProject) {
+                                        projectManager.moveToTrash(item, currentProject);
+                                    } else {
+                                        new Notice("Could not find project context to move to trash.");
+                                    }
+                                }
+                            },
+                            {
+                                text: 'Delete Permanently',
+                                action: () => projectManager.permanentlyDelete(item),
+                                warning: true
+                            }
+                        ]
+                    ).open();
+                })
+            );
+        }
         
         menu.showAtPosition({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
     };
