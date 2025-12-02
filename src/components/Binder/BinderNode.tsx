@@ -13,16 +13,19 @@ import { IconPickerModal } from '../../modals/IconPickerModal';
 const toPascalCase = (str: string) => str.replace(/(^\w|-\w)/g, g => g.replace('-', '').toUpperCase());
 
 // Helper to determine default icon based on extension
+// Helper to determine default icon based on extension
 const getFileIcon = (extension: string) => {
     const ext = extension.toLowerCase();
     if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) return icons.FileImage;
     if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) return icons.FileAudio;
     if (['mp4', 'webm', 'ogv', 'mov', 'avi', 'mkv'].includes(ext)) return icons.FileVideo;
+    if (['doc', 'docx', 'txt', 'rtf', 'md'].includes(ext)) return icons.FileText;
+    if (ext === 'pdf') return icons.ScrollText; // Updated PDF icon
     if (['js', 'ts', 'css', 'html', 'json', 'py', 'rb'].includes(ext)) return icons.FileCode;
     if (['csv', 'xls', 'xlsx'].includes(ext)) return icons.FileSpreadsheet;
     if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return (icons as any).FileArchive || icons.Archive;
     if (ext === 'canvas') return (icons as any).LayoutTemplate || icons.Layout;
-    return icons.FileText;
+    return icons.File; // Generic fallback
 };
 
 interface BinderNodeProps {
