@@ -1332,3 +1332,55 @@ body {
     text-decoration: underline;
     cursor: pointer;
 }
+
+/* --- Icon Picker Modal --- */
+.novelist-icon-picker {
+    display: flex;
+    flex-direction: column;
+    height: 450px; /* Give the modal a fixed height */
+}
+
+.novelist-icon-picker-search {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.novelist-icon-picker-grid {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 10px;
+    padding: 5px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.novelist-icon-picker-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.1s ease-in-out;
+}
+
+.novelist-icon-picker-item:hover {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    transform: scale(1.1);
+}
+
+.novelist-icon-picker-empty {
+    text-align: center;
+    color: var(--text-muted);
+    margin-top: 20px;
+    font-style: italic;
+}

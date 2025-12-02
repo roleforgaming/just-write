@@ -87,7 +87,7 @@ Project notes and synopsis go here.
                 if (!existing) {
                     try {
                         await this.app.vault.createFolder(fullPath);
-                    } catch (e) {
+                    } catch {
                         await this.ensureFolderExists(fullPath);
                     }
                 }
@@ -341,7 +341,8 @@ notes: ""
             createdTime: marker.stat.ctime,
             // New fields for settings
             templates: fm.templates || [],
-            mappings: fm.mappings || []
+            mappings: fm.mappings || [],
+            icons: fm.icons || {}
         };
     }
 
@@ -351,7 +352,8 @@ notes: ""
         status?: string, 
         archived?: boolean,
         templates?: DocumentTemplate[],
-        mappings?: FolderMapping[]
+        mappings?: FolderMapping[],
+        icons?: Record<string, string> 
     }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -363,6 +365,7 @@ notes: ""
             if (data.archived !== undefined) fm.archived = data.archived;
             if (data.templates !== undefined) fm.templates = data.templates;
             if (data.mappings !== undefined) fm.mappings = data.mappings;
+            if (data.icons !== undefined) fm.icons = data.icons;
         });
     }
 

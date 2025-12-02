@@ -157,7 +157,7 @@ function buildDecorations(state: any, app: App, model: ScriveningsModel, compone
                                 const splitIdx = text.lastIndexOf("](");
                                 if(splitIdx === -1) {
                                      // Try standard Obsidian link [text](url)
-                                     const standardSplit = text.lastIndexOf("]("); 
+                                     // const standardSplit = text.lastIndexOf("]("); // REMOVED THIS LINE
                                      // Actually simple regex is safer:
                                      const parts = /^\[(.*?)\](\(.*\))$/.exec(text);
                                      if(parts) {

@@ -51,10 +51,13 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
     const [contentResults, setContentResults] = useState<ContentSearchResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    // --- NEW STATE for Icon Map ---
+    const [iconMap, setIconMap] = useState<Record<string, string>>({});
+
     // --- Selection & Expansion State ---
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
-    const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null); // The 'active' or most recently clicked item
-    const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null); // The stable anchor for shift-click ranges
+    const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
+    const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     
     // Drag State
@@ -146,7 +149,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         
         return currentProject ? flatten(currentProject.children) : [];
     }, [currentProject, expandedPaths, nameFilter, sortChildren]);
-
+    
     const refresh = useCallback(() => {
         const current = currentProjectRef.current;
         if (current) setRootChildren(sortChildren(current.children));
@@ -154,10 +157,18 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         setFileSystemVersion(v => v + 1);
     }, [sortChildren]);
 
+    // --- Trigger View Refresh when Project Changes ---
     useEffect(() => {
         refresh();
+        if (currentProject) {
+            const meta = projectManager.getProjectMetadata(currentProject);
+            setIconMap(meta?.icons || {});
+        } else {
+            setIconMap({});
+        }
     }, [currentProject, refresh]);
 
+    // --- Initial Load & Listeners ---
     useEffect(() => {
         loadProjects();
 
@@ -192,6 +203,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         return () => events.forEach(ref => app.vault.offref(ref as any));
     }, [app, projectManager, loadProjects, refresh]);
 
+    // --- Dashboard Navigation ---
     const openDashboard = async () => {
         const { workspace } = app;
         let leaf: WorkspaceLeaf | null = null;
@@ -206,6 +218,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         }
     };
 
+    // --- Content Search Logic ---
     useEffect(() => {
         const delayDebounceFn = setTimeout(async () => {
             if (!contentQuery || contentQuery.length < 2 || !currentProject) {
@@ -287,7 +300,6 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
     const selectNode = (file: TAbstractFile, isShift: boolean, isCtrl: boolean) => {
         const path = file.path;
 
-        // Any click without Shift sets the selection anchor.
         if (!isShift) {
             setSelectionAnchor(path);
         }
@@ -302,13 +314,11 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
                 const end = Math.max(anchorIndex, currentIndex);
                 const rangePaths = visibleNodes.slice(start, end + 1).map(n => n.path);
                 
-                // If Ctrl is also held, add the new range to the existing selection.
-                // Otherwise, the new range becomes the entire selection.
                 const newSelection = isCtrl ? new Set(selectedPaths) : new Set<string>();
                 rangePaths.forEach(p => newSelection.add(p));
 
                 setSelectedPaths(newSelection);
-                setLastSelectedPath(path); // Update the active item, but not the anchor
+                setLastSelectedPath(path);
                 return;
             }
         } else if (isCtrl) {
@@ -320,14 +330,12 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
             }
             setSelectedPaths(newSelection);
         } else {
-            // This is a single click with no modifiers.
             setSelectedPaths(new Set([path]));
             if (file instanceof TFile) {
                 app.workspace.getLeaf(false).openFile(file);
             }
         }
         
-        // Always update the last selected path for keyboard navigation and active state.
         setLastSelectedPath(path);
     };
 
@@ -336,7 +344,6 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         
         if (e.button !== 0) return;
 
-        // Handle special "open in new tab" shortcut
         if (e.shiftKey && (e.metaKey || e.ctrlKey)) {
             if (file instanceof TFile) {
                 app.workspace.getLeaf('tab').openFile(file);
@@ -345,7 +352,7 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         }
 
         selectNode(file, e.shiftKey, e.metaKey || e.ctrlKey);
-    }, [selectedPaths, selectionAnchor, getFlattenedVisibleNodes]); // Updated dependencies
+    }, [selectedPaths, selectionAnchor, getFlattenedVisibleNodes]);
 
     const toggleExpansion = (path: string) => {
         const newExpanded = new Set(expandedPaths);
@@ -419,7 +426,6 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
 
         if (nextIndex !== currentIndex && visibleNodes[nextIndex]) {
             const target = visibleNodes[nextIndex];
-            // Keyboard navigation always results in a single selection
             selectNode(target, false, false);
         }
     };
@@ -538,6 +544,18 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
         }),
     };
 
+    const handleSetIcon = async (itemPath: string, iconName: string | null) => {
+        if (!currentProject) return;
+        const newIconMap = { ...iconMap };
+        if (iconName) {
+            newIconMap[itemPath] = iconName;
+        } else {
+            delete newIconMap[itemPath];
+        }
+        setIconMap(newIconMap);
+        await projectManager.updateProjectMetadata(currentProject, { icons: newIconMap });
+    };
+
     return (
         <div 
             className="novelist-binder-container" 
@@ -634,6 +652,8 @@ export const Binder: React.FC<BinderProps> = ({ app, plugin }) => {
                                 filterQuery={nameFilter}
                                 expandedPaths={expandedPaths}
                                 onToggleExpand={toggleExpansion}
+                                iconMap={iconMap}
+                                onSetIcon={handleSetIcon}
                             />
                         ))}
                     </SortableContext>

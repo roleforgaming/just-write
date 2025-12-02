@@ -1,11 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { TAbstractFile, TFile, TFolder, App, Menu, Notice } from 'obsidian';
-import { ChevronDown, FileText, Folder, FolderOpen, Trash2 } from 'lucide-react';
+import { ChevronDown, FileText, Folder, FolderOpen, Trash2, FileQuestion } from 'lucide-react';
+import * as icons from 'lucide-react';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getRank } from '../../utils/metadata';
 import { ProjectManager } from '../../utils/projectManager';
 import { ConfirmModal } from '../../modals/ConfirmModal';
+import { IconPickerModal } from '../../modals/IconPickerModal'; // CORRECTED: Removed .tsx extension
+
+// Helper to convert kebab-case to PascalCase
+const toPascalCase = (str: string) => str.replace(/(^\w|-\w)/g, g => g.replace('-', '').toUpperCase());
 
 interface BinderNodeProps {
     app: App;
@@ -17,14 +22,16 @@ interface BinderNodeProps {
     selectedPaths: Set<string>;
     onNodeClick: (e: React.MouseEvent, file: TAbstractFile) => void;
     filterQuery?: string;
-    expandedPaths: Set<string>; // Lifted state
-    onToggleExpand: (path: string) => void; // Lifted toggler
+    expandedPaths: Set<string>;
+    onToggleExpand: (path: string) => void;
+    iconMap: Record<string, string>;
+    onSetIcon: (itemPath: string, iconName: string | null) => void;
 }
 
 export const BinderNode: React.FC<BinderNodeProps> = ({ 
     app, item, depth, activeFile, version, currentProject, 
     selectedPaths, onNodeClick, filterQuery = '',
-    expandedPaths, onToggleExpand
+    expandedPaths, onToggleExpand, iconMap, onSetIcon
 }) => {
     const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(item.name);
@@ -33,13 +40,12 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     const isFile = item instanceof TFile;
     const isActive = activeFile && activeFile.path === item.path;
     const isSelected = selectedPaths.has(item.path);
-    const isExpanded = expandedPaths.has(item.path); // Check lifted state
+    const isExpanded = expandedPaths.has(item.path);
 
     const projectManager = new ProjectManager(app);
     const inTrash = projectManager.isInTrash(item);
     const isTrashFolder = currentProject && item.path === `${currentProject.path}/Trash`;
 
-    // --- Filter Logic ---
     const matchesFilter = (node: TAbstractFile, query: string): boolean => {
         if (!query) return true;
         if (node.name.toLowerCase().includes(query.toLowerCase())) return true;
@@ -51,7 +57,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
 
     const isVisible = useMemo(() => matchesFilter(item, filterQuery), [item, filterQuery, version]);
     
-    // If filtering, force expansion if needed
     const effectiveExpanded = useMemo(() => {
         if (filterQuery) {
              if (!isFolder) return false;
@@ -60,7 +65,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         return isExpanded;
     }, [isExpanded, filterQuery, item, version]);
 
-    // --- Drag and Drop Logic ---
     const {
         attributes,
         listeners,
@@ -77,10 +81,9 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             path: item.path,
             parent: item.parent?.path
         },
-        disabled: inTrash || isTrashFolder || isRenaming || !!filterQuery // Disable DND during filter
+        disabled: inTrash || isTrashFolder || isRenaming || !!filterQuery
     });
 
-    // Determine drop visual feedback
     const isDropTarget = isOver && !isDragging && isFolder && active && active.id !== item.path;
 
     const style = {
@@ -88,8 +91,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         transition,
         opacity: isDragging ? 0.3 : (inTrash ? 0.7 : 1),
     };
-
-    // --- Handlers ---
 
     const handleRenameSubmit = async () => {
         setIsRenaming(false);
@@ -133,6 +134,23 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
             return;
         }
 
+        menu.addItem((i) => i.setTitle("Change Icon").setIcon("image-plus")
+            .onClick(() => {
+                new IconPickerModal(app, (iconName) => {
+                    onSetIcon(item.path, iconName);
+                }).open();
+            })
+        );
+
+        if (iconMap[item.path]) {
+            menu.addItem((i) => i.setTitle("Remove Icon").setIcon("x-circle")
+                .onClick(() => {
+                    onSetIcon(item.path, null);
+                })
+            );
+        }
+        
+        menu.addSeparator();
         menu.addItem((i) => i.setTitle("Rename").setIcon("pencil").onClick(() => setIsRenaming(true)));
         menu.addSeparator();
         menu.addItem((i) => i.setTitle("New Document").setIcon("file-plus")
@@ -191,7 +209,6 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
         }
     };
 
-    // --- Sorting Recursion ---
     const sortedChildren = useMemo(() => {
         if (!isFolder) return [];
         const folder = item as TFolder;
@@ -207,6 +224,8 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
     }, [item, app, isFolder, version]); 
 
     const rankDisplay = isFile ? getRank(app, item as TFile) : null;
+    const customIconName = iconMap[item.path];
+    const IconComponent = customIconName ? (icons as any)[toPascalCase(customIconName)] || FileQuestion : null;
 
     if (!isVisible) return null;
 
@@ -238,8 +257,10 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                 </div>
 
                 <div className="novelist-binder-icon">
-                    {item.name === "Trash" ? <Trash2 size={14} /> : (
-                        isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
+                    {IconComponent ? <IconComponent size={14} /> : (
+                        item.name === "Trash" ? <Trash2 size={14} /> : (
+                            isFolder ? (!effectiveExpanded ? <Folder size={14} /> : <FolderOpen size={14} />) : <FileText size={14} />
+                        )
                     )}
                 </div>
 
@@ -278,6 +299,8 @@ export const BinderNode: React.FC<BinderNodeProps> = ({
                                 filterQuery={filterQuery}
                                 expandedPaths={expandedPaths}
                                 onToggleExpand={onToggleExpand}
+                                iconMap={iconMap}
+                                onSetIcon={onSetIcon}
                             />
                         ))}
                     </SortableContext>
