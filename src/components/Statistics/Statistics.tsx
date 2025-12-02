@@ -8,6 +8,9 @@ interface StatisticsProps {
     project: TFolder;
 }
 
+// Helper to check if a string is in YYYY-MM-DD format
+const isValidDateString = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+
 export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
     const pm = useMemo(() => new ProjectManager(app), [app]);
     const [meta, setMeta] = useState(pm.getProjectMetadata(project));
@@ -20,16 +23,14 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
         const count = await pm.getProjectWordCount(project);
         setCurrentWordCount(count);
         
-        // Get today's count from history if available
         const todayStr = new Date().toISOString().split('T')[0];
-        setTodayCount(newMeta?.writingHistory?.[todayStr] || 0);
+        setTodayCount(Number(newMeta?.writingHistory?.[todayStr] || 0));
     };
 
     useEffect(() => {
         refresh();
         const events = [
             app.vault.on('modify', () => { 
-                // Debounce refresh slightly to avoid thrashing on typing
                 setTimeout(refresh, 2000); 
             }),
             app.metadataCache.on('changed', (f) => {
@@ -45,15 +46,22 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
     const progressPercent = target > 0 ? Math.min(100, Math.round((currentWordCount / target) * 100)) : 0;
 
     const daysRemaining = useMemo(() => {
-        if (!deadline) return null;
+        if (!deadline || !meta.targetDeadline || !isValidDateString(meta.targetDeadline)) return null;
+        
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // Normalize today to the beginning of the day
-        const deadlineDate = new Date(deadline);
-        deadlineDate.setHours(0, 0, 0, 0); // Normalize deadline to the beginning of the day
+        today.setHours(0, 0, 0, 0);
+
+        const parts = meta.targetDeadline.split('-').map(Number);
+        // Month is 0-indexed in JS Date constructor
+        const deadlineDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        deadlineDate.setHours(0, 0, 0, 0);
+        
+        if (isNaN(deadlineDate.getTime())) return null;
+
         const diffTime = deadlineDate.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         return Math.max(0, diffDays);
-    }, [deadline]);
+    }, [deadline, meta?.targetDeadline]);
 
     const wordsPerDayNeeded = useMemo(() => {
         if (daysRemaining === null || daysRemaining <= 0 || target === 0) return 0;
@@ -86,12 +94,13 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
     }, [meta?.writingHistory]);
 
 
-    // Sort history for display (newest first)
+    // Sort history for display (newest first) and filter out bad data
     const historyEntries = useMemo(() => {
         if (!meta?.writingHistory) return [];
         return Object.entries(meta.writingHistory)
+            .filter(([date, count]) => isValidDateString(date) && !isNaN(Number(count)))
             .sort((a, b) => b[0].localeCompare(a[0]))
-            .slice(0, 30); // Show last 30 entries
+            .slice(0, 30);
     }, [meta?.writingHistory]);
 
     return (
@@ -126,7 +135,7 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
                 </div>
 
                 {/* 4. Deadline Metrics */}
-                {deadline ? (
+                {deadline && daysRemaining !== null ? (
                     <div className="novelist-stat-card full-width deadline-card">
                         <div className="stat-columns">
                             <div>
@@ -163,12 +172,17 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
                     </thead>
                     <tbody>
                         {historyEntries.length > 0 ? (
-                            historyEntries.map(([date, count]) => (
-                                <tr key={date}>
-                                    <td>{new Date(date).toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}</td>
-                                    <td>{count.toLocaleString()}</td>
-                                </tr>
-                            ))
+                            historyEntries.map(([date, count]) => {
+                                // Use robust date parsing that ignores timezones
+                                const dateParts = date.split('-').map(Number);
+                                const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                                return (
+                                    <tr key={date}>
+                                        <td>{d.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}</td>
+                                        <td>{Number(count || 0).toLocaleString()}</td>
+                                    </tr>
+                                );
+                            })
                         ) : (
                             <tr>
                                 <td colSpan={2} style={{textAlign: 'center', color: 'var(--text-muted)'}}>No writing history yet.</td>
