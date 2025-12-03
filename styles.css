@@ -1823,7 +1823,7 @@ body {
     background: var(--background-primary);
     border: 1px solid var(--background-modifier-border);
     border-radius: 6px;
-    padding: 10px;
+    padding: 8px;
     transition: box-shadow 0.2s;
 }
 
@@ -1847,7 +1847,7 @@ body {
 .snapshot-note {
     font-size: 0.9em;
     color: var(--text-normal);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     font-style: italic;
     background: var(--background-secondary);
     padding: 4px;
@@ -1856,11 +1856,17 @@ body {
 
 .snapshot-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     gap: 5px;
-    margin-top: 5px;
+    margin-top: 4px;
     border-top: 1px solid var(--background-modifier-border);
-    padding-top: 5px;
+    padding-top: 4px;
+}
+
+.snapshot-actions-group {
+    display: flex;
+    gap: 5px;
 }
 
 .snapshot-actions button {
@@ -2155,9 +2161,16 @@ body {
     display: flex;
     gap: 8px;
     align-items: center;
-    padding: 8px 0;
+    padding-bottom: 8px;
     margin-bottom: 10px;
     border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.snapshot-toolbar-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex-shrink: 0;
 }
 
@@ -2167,10 +2180,145 @@ body {
 
 .novelist-snapshots-toolbar select,
 .novelist-snapshots-toolbar button {
-    height: 30px; /* Standardize height */
-    padding: 4px;
+    height: 30px;
+    padding: 4px 8px;
     font-size: 0.85em;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
 }
+
+/* --- Snapshot Toolbar View Switcher --- */
+.novelist-snapshots-toolbar .novelist-view-switcher {
+    display: flex;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.novelist-snapshots-toolbar .novelist-view-switcher button {
+    background: transparent;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    height: auto;
+}
+
+.novelist-snapshots-toolbar .novelist-view-switcher button:hover {
+    color: var(--text-normal);
+}
+
+.novelist-snapshots-toolbar .novelist-view-switcher button.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* --- NEW: Snapshot List View Styles --- */
+
+.snapshot-list-view {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.snapshot-list-view table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.snapshot-list-view th {
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--background-modifier-border);
+}
+
+.snapshot-list-view td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-size: 0.9em;
+    vertical-align: middle;
+}
+
+.snapshot-list-row:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.snapshot-list-view .col-date {
+    width: 35%;
+    white-space: nowrap;
+}
+
+.snapshot-list-view .col-note {
+    width: 40%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px; /* Adjust as needed */
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+.snapshot-list-view .col-words {
+    width: 10%;
+    text-align: right;
+}
+
+.snapshot-list-view .col-actions {
+    width: 15%;
+    text-align: right;
+}
+
+.snapshot-actions-list {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 5px;
+}
+
+.snapshot-actions-list button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 2px;
+    border-radius: 4px;
+    display: flex; /* Ensures icon is centered */
+}
+
+.snapshot-actions-list button:hover {
+    background: var(--background-modifier-hover);
+    color: var(--interactive-accent);
+}
+
+.snapshot-actions-list button.danger:hover {
+    color: var(--text-error);
+}
+
+.pin-toggle-btn-list {
+    /* No special positioning needed */
+}
+
+.pin-toggle-btn-list.is-pinned {
+    color: var(--interactive-accent);
+}
+
+.pin-toggle-btn-list:not(.is-pinned) {
+    color: var(--text-faint);
+}
+.pin-toggle-btn-list:hover {
+    color: var(--interactive-accent) !important; /* Override specificity */
+}
+
 
 /* <--- NEW STYLES FOR PINNING ---> */
 /* Persistent Pin Icon */
@@ -2191,49 +2339,6 @@ body {
     position: relative; /* Needed for absolute positioning of pin toggle */
 }
 
-.snapshot-actions {
-    /* Keep existing styles */
-    display: flex;
-    justify-content: flex-end;
-    gap: 5px;
-    margin-top: 5px;
-    border-top: 1px solid var(--background-modifier-border);
-    padding-top: 5px;
-    position: relative; /* Ensure other buttons are positioned relative to this */
-    padding-right: 40px; /* Space for the hidden toggle button */
-}
-
-/* 1. Pin Toggle Button Style (Hidden by default, positioned absolutely) */
 .snapshot-actions .pin-toggle-btn {
-    position: absolute; 
-    /* Position on the far right, slightly above the other actions */
-    right: 4px; 
-    top: 50%;
-    transform: translateY(-50%);
-    opacity: 0; /* Hidden by default */
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-primary);
-    color: var(--text-muted);
-    z-index: 10;
+    opacity: 0;
 }
-
-/* 2. Show Pin Toggle on Item Hover (AC) */
-.snapshot-item:hover .snapshot-actions .pin-toggle-btn {
-    opacity: 1; 
-}
-
-/* 3. Pinned State Button Style */
-.snapshot-actions .pin-toggle-btn.is-pinned {
-    color: var(--text-on-accent);
-    background: var(--interactive-accent);
-    border-color: var(--interactive-accent);
-    opacity: 1; /* Always visible if pinned for easy unpinning */
-}
-
-.snapshot-actions .pin-toggle-btn.is-pinned:hover {
-    opacity: 0.9;
-    color: var(--text-on-accent);
-}
-/* <--- END NEW STYLES FOR PINNING ---> */

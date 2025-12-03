@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { App, TFile, Notice } from 'obsidian';
 import { ProjectManager } from '../utils/projectManager';
-import { BookOpen, NotebookPen, Tags, Camera, Plus, Trash2, RotateCcw, FileDiff, Search, X, ArrowUp, ArrowDown, Pin } from 'lucide-react';
+import { BookOpen, NotebookPen, Tags, Camera, Plus, Trash2, RotateCcw, FileDiff, Search, X, ArrowUp, ArrowDown, Pin, List, LayoutGrid } from 'lucide-react';
 import NovelistPlugin from '../main';
 import { Snapshot } from '../utils/snapshotManager';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -50,6 +50,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
     const [snapshotQuery, setSnapshotQuery] = React.useState('');
     const [snapshotSortKey, setSnapshotSortKey] = React.useState<'timestamp' | 'wordCount' | 'note'>('timestamp');
     const [snapshotSortDirection, setSnapshotSortDirection] = React.useState<'desc' | 'asc'>('desc');
+    const [snapshotViewMode, setSnapshotViewMode] = React.useState<'card' | 'list'>('card');
 
     const pm = React.useMemo(() => new ProjectManager(app), [app]);
     const isReadOnly = pm.isInTrash(file);
@@ -330,69 +331,132 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                                     />
                                     {snapshotQuery && <X size={12} className="clear-filter" onClick={() => setSnapshotQuery('')} />}
                                 </div>
-                                <select
-                                    value={snapshotSortKey}
-                                    onChange={(e) => setSnapshotSortKey(e.target.value as any)}
-                                    style={{minWidth: '100px', padding: '4px 8px', fontSize: '0.85em', background: 'var(--background-secondary)', border: '1px solid var(--background-modifier-border)', borderRadius: '4px'}}
-                                >
-                                    <option value="timestamp">Date</option>
-                                    <option value="wordCount">Words</option>
-                                    <option value="note">Note</option>
-                                </select>
-                                <button 
-                                    onClick={() => setSnapshotSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
-                                    title={`Sort ${snapshotSortDirection === 'asc' ? 'Descending' : 'Ascending'}`}
-                                    style={{background: 'var(--background-secondary)', border: '1px solid var(--background-modifier-border)', borderRadius: '4px', padding: '4px', display: 'flex', alignItems: 'center'}}
-                                >
-                                    {snapshotSortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-                                </button>
-                            </div>
-
-                            <div className="snapshot-list">
-                                {isSnapshotsLoading && <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 10}}>Loading history...</div>}
-                                {!isSnapshotsLoading && filteredAndSortedSnapshots.length === 0 && (
-                                    <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 20, fontStyle:'italic'}}>
-                                        {snapshotQuery ? 'No snapshots match your query.' : 'No snapshots yet.'}
-                                    </div>
-                                )}
-                                
-                                {filteredAndSortedSnapshots.map(snap => (
-                                <div key={snap.timestamp} className="snapshot-item">
-                                    <div className="snapshot-header">
-                                        <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
-                                        <span className="snapshot-words">{snap.wordCount} words</span>
-                                    </div>
-                                    
-                                    {snap.note && <div className="snapshot-note">{snap.note}</div>}
-                                    
-                                    <div className="snapshot-status-indicators">
-                                         {snap.isPinned && (
-                                            <span title="Excluded from Pruning">
-                                                <Pin size={14} className="is-pinned-icon"/>
-                                            </span>
-                                         )}
-                                    </div>
-
-                                    <div className="snapshot-actions">
-                                        <button 
-                                            onClick={(e) => { 
-                                                e.stopPropagation(); 
-                                                handlePinSnapshot(snap, !snap.isPinned); 
-                                            }} 
-                                            disabled={isReadOnly}
-                                            title={snap.isPinned ? "Unpin (Allow Pruning)" : "Pin (Exclude from Pruning)"}
-                                            className={`pin-toggle-btn ${snap.isPinned ? 'is-pinned' : ''}`}
+                                <div className="snapshot-toolbar-controls">
+                                    <div className="novelist-view-switcher">
+                                        <button
+                                            className={snapshotViewMode === 'card' ? 'is-active' : ''}
+                                            onClick={() => setSnapshotViewMode('card')}
+                                            title="Card View"
                                         >
-                                            <Pin size={14}/>
+                                            <LayoutGrid size={14} />
                                         </button>
-
-                                        <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
-                                        <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
-                                        <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
+                                        <button
+                                            className={snapshotViewMode === 'list' ? 'is-active' : ''}
+                                            onClick={() => setSnapshotViewMode('list')}
+                                            title="List View"
+                                        >
+                                            <List size={14} />
+                                        </button>
                                     </div>
+                                    <select
+                                        value={snapshotSortKey}
+                                        onChange={(e) => setSnapshotSortKey(e.target.value as any)}
+                                    >
+                                        <option value="timestamp">Date</option>
+                                        <option value="wordCount">Words</option>
+                                        <option value="note">Note</option>
+                                    </select>
+                                    <button 
+                                        onClick={() => setSnapshotSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+                                        title={`Sort ${snapshotSortDirection === 'asc' ? 'Descending' : 'Ascending'}`}
+                                    >
+                                        {snapshotSortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                                    </button>
                                 </div>
-                                ))}
                             </div>
+
+                            {isSnapshotsLoading && <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 10}}>Loading history...</div>}
+                            {!isSnapshotsLoading && filteredAndSortedSnapshots.length === 0 && (
+                                <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 20, fontStyle:'italic'}}>
+                                    {snapshotQuery ? 'No snapshots match your query.' : 'No snapshots yet.'}
+                                </div>
+                            )}
+                            
+                            {snapshotViewMode === 'card' && !isSnapshotsLoading && filteredAndSortedSnapshots.length > 0 && (
+                                <div className="snapshot-list">
+                                    {filteredAndSortedSnapshots.map(snap => (
+                                    <div key={snap.timestamp} className="snapshot-item">
+                                        <div className="snapshot-header">
+                                            <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
+                                            <span className="snapshot-words">{snap.wordCount} words</span>
+                                        </div>
+                                        
+                                        {snap.note && <div className="snapshot-note">{snap.note}</div>}
+                                        
+                                        <div className="snapshot-status-indicators">
+                                             {snap.isPinned && (
+                                                <span title="Excluded from Pruning">
+                                                    <Pin size={14} className="is-pinned-icon"/>
+                                                </span>
+                                             )}
+                                        </div>
+
+                                        <div className="snapshot-actions">
+                                            <button 
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    handlePinSnapshot(snap, !snap.isPinned); 
+                                                }} 
+                                                disabled={isReadOnly}
+                                                title={snap.isPinned ? "Unpin (Allow Pruning)" : "Pin (Exclude from Pruning)"}
+                                                className={`pin-toggle-btn-list ${snap.isPinned ? 'is-pinned' : ''}`}
+                                            >
+                                                <Pin size={14}/>
+                                            </button>
+                                            <div className="snapshot-actions-group">
+                                                <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
+                                                <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
+                                                <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {snapshotViewMode === 'list' && !isSnapshotsLoading && filteredAndSortedSnapshots.length > 0 && (
+                                <div className="snapshot-list-view">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Note</th>
+                                                <th>Words</th>
+                                                <th style={{ textAlign: 'right' }}>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredAndSortedSnapshots.map(snap => (
+                                            <tr key={snap.timestamp} className="snapshot-list-row">
+                                                <td className="col-date">
+                                                    <SnapshotTimeDisplay timestamp={snap.timestamp} />
+                                                </td>
+                                                <td className="col-note">{snap.note}</td>
+                                                <td className="col-words">{snap.wordCount}</td>
+                                                <td className="col-actions">
+                                                    <div className="snapshot-actions-list">
+                                                        <button 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                handlePinSnapshot(snap, !snap.isPinned); 
+                                                            }} 
+                                                            disabled={isReadOnly}
+                                                            title={snap.isPinned ? "Unpin (Allow Pruning)" : "Pin (Exclude from Pruning)"}
+                                                            className={`pin-toggle-btn-list ${snap.isPinned ? 'is-pinned' : ''}`}
+                                                        >
+                                                            <Pin size={14}/>
+                                                        </button>
+                                                        <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
+                                                        <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
+                                                        <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
