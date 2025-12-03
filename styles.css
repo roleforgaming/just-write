@@ -1881,12 +1881,110 @@ body {
 
 /* --- Snapshot Compare Modal Updates --- */
 
+/* Updated Modal Styles */
 .novelist-snapshot-compare-modal {
-    width: 90vw !important;
-    max-width: 1400px !important;
-    height: 85vh !important;
+    /* Initial Size - removed !important to allow resizing override */
+    width: 90vw;
+    height: 85vh;
+    max-width: 95vw;
+    max-height: 95vh;
+    
+    /* Enable Resizing */
+    resize: both;
+    overflow: hidden; /* Required for resize handle in some browsers */
+    min-width: 600px;
+    min-height: 400px;
+
     display: flex;
     flex-direction: column;
+}
+
+/* Maximized State */
+.novelist-snapshot-compare-modal.is-maximized {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border-radius: 0;
+    resize: none; /* Hide resize handle when maximized */
+    top: 0;
+}
+
+.novelist-snapshot-compare-modal .modal-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+}
+
+/* Header Area Updates */
+.compare-modal-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
+
+/* New container for right-side controls (Toggle + Maximize) */
+.compare-modal-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-right: 25px; /* Space for Obsidian's default close 'X' button */
+}
+
+.view-mode-toggle {
+    display: flex;
+    background: var(--background-primary);
+    border-radius: 6px;
+    padding: 3px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.view-toggle-btn {
+    /* ... existing styles ... */
+    background: transparent;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    color: var(--text-muted);
+    transition: all 0.2s;
+}
+
+.view-toggle-btn:hover {
+    color: var(--text-normal);
+}
+
+.view-toggle-btn.active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    font-weight: 600;
+}
+
+/* Window Control Button (Maximize/Restore) */
+.window-control-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.window-control-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
 }
 
 .novelist-snapshot-compare-modal .modal-content {

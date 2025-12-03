@@ -1,4 +1,4 @@
-import { App, Modal, TFile, ButtonComponent } from 'obsidian';
+import { App, Modal, TFile, ButtonComponent, setIcon } from 'obsidian';
 import * as dmp from 'diff-match-patch';
 
 const Diff_Match_Patch = (dmp as any).Diff_Match_Patch || (dmp as any).default || (window as any).Diff_Match_Patch; 
@@ -14,6 +14,7 @@ export class SnapshotCompareModal extends Modal {
     private snapshotDate: string;
     private viewMode: 'unified' | 'split' = 'unified';
     private diffContainer: HTMLElement;
+    private isMaximized: boolean = false;
 
     constructor(app: App, file: TFile, snapshotDate: string, currentContent: string, snapshotContent: string) {
         super(app);
@@ -33,14 +34,21 @@ export class SnapshotCompareModal extends Modal {
         const titleEl = headerContainer.createEl('h2', { text: `Comparing: ${this.file.basename}` });
         titleEl.style.margin = '0';
 
-        const toggleContainer = headerContainer.createDiv({ cls: 'view-mode-toggle' });
+        // Right side controls container
+        const controlsContainer = headerContainer.createDiv({ cls: 'compare-modal-controls' });
+
+        // 1. View Mode Toggle
+        const toggleContainer = controlsContainer.createDiv({ cls: 'view-mode-toggle' });
         const btnUnified = toggleContainer.createEl('button', { text: 'Unified', cls: 'view-toggle-btn' });
         const btnSplit = toggleContainer.createEl('button', { text: 'Side-by-Side', cls: 'view-toggle-btn' });
 
-        // --- Content Section ---
-        // FIX: Initialize diffContainer *before* it is used.
-        this.diffContainer = contentEl.createDiv({ cls: 'diff-container-wrapper' });
+        // 2. Maximize Button
+        const maxBtn = controlsContainer.createEl('button', { cls: 'window-control-btn', attr: { 'aria-label': 'Maximize' } });
+        setIcon(maxBtn, 'maximize');
 
+        // --- Logic ---
+        
+        // Toggle View Mode
         const updateToggleState = () => {
             if (this.viewMode === 'unified') {
                 btnUnified.addClass('active');
@@ -55,7 +63,24 @@ export class SnapshotCompareModal extends Modal {
         btnUnified.onclick = () => { this.viewMode = 'unified'; updateToggleState(); };
         btnSplit.onclick = () => { this.viewMode = 'split'; updateToggleState(); };
         
-        // Initial render call
+        // Toggle Maximize
+        maxBtn.onclick = () => {
+            this.isMaximized = !this.isMaximized;
+            if (this.isMaximized) {
+                modalEl.addClass('is-maximized');
+                setIcon(maxBtn, 'minimize'); // Visual cue to restore
+                maxBtn.setAttribute('aria-label', 'Restore');
+            } else {
+                modalEl.removeClass('is-maximized');
+                setIcon(maxBtn, 'maximize');
+                maxBtn.setAttribute('aria-label', 'Maximize');
+            }
+        };
+
+        // --- Content Section ---
+        this.diffContainer = contentEl.createDiv({ cls: 'diff-container-wrapper' });
+        
+        // Initial render
         updateToggleState();
 
         // --- Footer Section ---
@@ -66,7 +91,6 @@ export class SnapshotCompareModal extends Modal {
     }
 
     renderContent() {
-        // Now 'this.diffContainer' will always be defined here.
         this.diffContainer.empty();
         
         if (!Diff_Match_Patch) {
@@ -117,12 +141,10 @@ export class SnapshotCompareModal extends Modal {
         this.diffContainer.addClass('is-split');
 
         const leftPane = this.diffContainer.createDiv({ cls: 'diff-pane' });
-        // FIX: Remove unused variable assignment
         leftPane.createDiv({ cls: 'diff-pane-header', text: `Snapshot (${this.snapshotDate})` });
         const leftContent = leftPane.createDiv({ cls: 'diff-pane-content' });
 
         const rightPane = this.diffContainer.createDiv({ cls: 'diff-pane' });
-        // FIX: Remove unused variable assignment
         rightPane.createDiv({ cls: 'diff-pane-header', text: 'Current Version' });
         const rightContent = rightPane.createDiv({ cls: 'diff-pane-content' });
 
