@@ -3,28 +3,28 @@ import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Inspector } from '../components/Inspector';
 import { ProjectManager } from '../utils/projectManager';
+import NovelistPlugin from '../main'; // Import
 
 export const VIEW_TYPE_INSPECTOR = "novelist-inspector-view";
 
 export class InspectorView extends ItemView {
     root: Root | null = null;
-    selectedFile: TFile | null = null; // Track selection manually
+    selectedFile: TFile | null = null;
+    plugin: NovelistPlugin; // Added
 
-    constructor(leaf: WorkspaceLeaf) {
+    constructor(leaf: WorkspaceLeaf, plugin: NovelistPlugin) {
         super(leaf);
+        this.plugin = plugin;
     }
 
     getViewType() { return VIEW_TYPE_INSPECTOR; }
     getDisplayText() { return "Inspector"; }
-    
-    // Updated to 'glasses' for a more distinct look representing inspection
     getIcon() { return "glasses"; }
 
     async onOpen() {
         this.root = createRoot(this.contentEl);
         this.renderReact();
         
-        // 1. Listen for standard file opening
         this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
                 if (file) {
@@ -34,17 +34,15 @@ export class InspectorView extends ItemView {
             })
         );
 
-        // 2. Listen for our Custom Event from Corkboard/Outliner/Binder
         this.registerEvent(
             (this.app.workspace as any).on('novelist:select-file', (file: TFile | TFolder) => {
-                // If it is a folder, check for a folder note immediately to show that in inspector
                 if (file instanceof TFolder) {
                      const pm = new ProjectManager(this.app);
                      const folderNote = pm.getFolderNote(file);
                      if (folderNote) {
                          this.selectedFile = folderNote;
                      } else {
-                         this.selectedFile = null; // Can't inspect a raw folder without note
+                         this.selectedFile = null;
                      }
                 } else {
                     this.selectedFile = file;
@@ -55,11 +53,7 @@ export class InspectorView extends ItemView {
     }
 
     renderReact() {
-        // Fallback to active file if no manual selection yet
         let file = this.selectedFile || this.app.workspace.getActiveFile();
-        
-        // Final fallback: If current selection is null, but there's a file active, use it?
-        // No, stay consistent with selection.
         
         if (!file || file.extension !== 'md') {
             this.root?.render(
@@ -85,6 +79,7 @@ export class InspectorView extends ItemView {
         this.root?.render(
             <Inspector 
                 app={this.app} 
+                plugin={this.plugin} // Pass plugin
                 file={file} 
             />
         );

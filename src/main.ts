@@ -9,22 +9,28 @@ import { StatisticsView, VIEW_TYPE_STATISTICS } from './views/StatisticsView';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { ProjectManager } from './utils/projectManager';
 import { SessionManager } from './utils/sessionManager'; 
+import { SnapshotManager } from './utils/snapshotManager'; // Import
+import { Logger } from './utils/logger'; // Import
 import { NovelistSettingTab, NovelistSettings, DEFAULT_SETTINGS } from './settings';
 
 export default class NovelistPlugin extends Plugin {
     settings: NovelistSettings;
     sessionManager: SessionManager;
+    snapshotManager: SnapshotManager; // New
+    logger: Logger; // New
     statusBarItem: HTMLElement;
 
     async onload() {
         await this.loadSettings();
 
         // Initialize Managers
+        this.logger = new Logger(this);
+        this.snapshotManager = new SnapshotManager(this.app, this.logger);
         this.sessionManager = new SessionManager(this.app, this);
         const projectManager = new ProjectManager(this.app, this);
 
         // --- 1. Register Views ---
-        this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf));
+        this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf, this));
         this.registerView(VIEW_TYPE_CORKBOARD, (leaf) => new CorkboardView(leaf));
         this.registerView(VIEW_TYPE_SCRIVENINGS, (leaf) => new ScriveningsView(leaf));
         this.registerView(VIEW_TYPE_OUTLINER, (leaf) => new OutlinerView(leaf));
@@ -108,6 +114,13 @@ export default class NovelistPlugin extends Plugin {
             })
         );
         
+        // --- Snapshot Rename Handling ---
+        this.registerEvent(
+            this.app.vault.on('rename', (file, oldPath) => {
+                this.snapshotManager.handleFileRename(file, oldPath);
+            })
+        );
+
         // --- 6. Read-Only Enforcement (Trash) ---
         this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
@@ -242,14 +255,12 @@ export default class NovelistPlugin extends Plugin {
         const { workspace } = this.app;
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_INSPECTOR);
-        
         if (leaves.length > 0) {
             leaf = leaves[0];
         } else {
             leaf = workspace.getRightLeaf(false);
             await leaf.setViewState({ type: VIEW_TYPE_INSPECTOR, active: true });
         }
-        
         if (leaf) workspace.revealLeaf(leaf);
     }
 
