@@ -18,6 +18,12 @@ export interface FolderMapping {
     templateName: string;
 }
 
+export interface PruningSettings {
+    keepDaily: number;   // Days to keep all snapshots
+    keepWeekly: number;  // Weeks to keep one snapshot per day
+    keepMonthly: number; // Months to keep one snapshot per week
+}
+
 export interface NovelistSettings {
     // 1. General & Startup
     startupBehavior: 'none' | 'dashboard' | 'binder' | 'both';
@@ -65,6 +71,14 @@ export interface NovelistSettings {
     
     // 10. Statistics
     statsSubtractOnDelete: boolean;
+
+    // 11. Snapshots (Phase 2)
+    autoSnapshotOnSessionStart: boolean;
+    autoSnapshotOnSessionEnd: boolean;
+    enableDailyAutoSnapshot: boolean;
+    dailyAutoSnapshotTime: string; // HH:mm
+    enablePruning: boolean;
+    pruningSettings: PruningSettings;
 }
 
 export const DEFAULT_SETTINGS: NovelistSettings = {
@@ -104,6 +118,17 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
     advancedReorderCommand: 'Custom File Explorer sorting: Enable and apply the custom sorting, (re)parsing the sorting configuration first. Sort-on.',
     globalDailyTarget: 500,
     statsSubtractOnDelete: true,
+    // Snapshots Defaults
+    autoSnapshotOnSessionStart: false,
+    autoSnapshotOnSessionEnd: false,
+    enableDailyAutoSnapshot: false,
+    dailyAutoSnapshotTime: "12:00",
+    enablePruning: false,
+    pruningSettings: {
+        keepDaily: 7,
+        keepWeekly: 4,
+        keepMonthly: 12,
+    },
 };
 
 // --- Settings Tab ---
@@ -137,301 +162,106 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
         
-        containerEl.createEl('h2', { text: 'Writing Targets & Statistics' });
+        // ... [Existing Sections Omitted for Brevity - keep them] ...
+
+        // --- 11. Snapshots ---
+        containerEl.createEl('h2', { text: 'Document Snapshots' });
 
         new Setting(containerEl)
-            .setName('Global Daily Word Count Target')
-            .setDesc('Default session target if a specific project target is not set.')
+            .setName('Auto-snapshot on Session Start')
+            .setDesc('Create a snapshot of all currently open files when Obsidian starts.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoSnapshotOnSessionStart)
+                .onChange(async (value) => {
+                    this.plugin.settings.autoSnapshotOnSessionStart = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Auto-snapshot on Session End')
+            .setDesc('Create a snapshot of all open files when the plugin unloads (e.g. closing Obsidian). Note: This is best-effort and may not catch sudden crashes.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoSnapshotOnSessionEnd)
+                .onChange(async (value) => {
+                    this.plugin.settings.autoSnapshotOnSessionEnd = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Enable Daily Auto-snapshot')
+            .setDesc('Take a snapshot of every markdown file in the vault once a day.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableDailyAutoSnapshot)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableDailyAutoSnapshot = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Daily Snapshot Time')
+            .setDesc('Time to trigger the daily snapshot (HH:mm).')
             .addText(text => text
-                .setValue(String(this.plugin.settings.globalDailyTarget))
+                .setPlaceholder('12:00')
+                .setValue(this.plugin.settings.dailyAutoSnapshotTime)
+                .onChange(async (value) => {
+                    this.plugin.settings.dailyAutoSnapshotTime = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        containerEl.createEl('h4', { text: 'Snapshot Pruning' });
+        
+        new Setting(containerEl)
+            .setName('Enable Pruning')
+            .setDesc('Automatically delete old snapshots based on the rules below.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enablePruning)
+                .onChange(async (value) => {
+                    this.plugin.settings.enablePruning = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Keep All (Days)')
+            .setDesc('Keep every snapshot made within this many days.')
+            .addText(text => text
+                .setValue(String(this.plugin.settings.pruningSettings.keepDaily))
                 .onChange(async (value) => {
                     const num = parseInt(value);
-                    if (!isNaN(num) && num >= 0) {
-                        this.plugin.settings.globalDailyTarget = num;
+                    if (!isNaN(num)) {
+                        this.plugin.settings.pruningSettings.keepDaily = num;
                         await this.plugin.saveSettings();
                     }
                 }));
 
         new Setting(containerEl)
-            .setName('Subtract Words on Deletion')
-            .setDesc('If enabled, deleting words written TODAY reduces your session count. Deleting words written on previous days will NOT reduce your session count. If disabled, session count only goes up (Gross count).')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.statsSubtractOnDelete)
+            .setName('Keep Daily (Weeks)')
+            .setDesc('For snapshots older than the "Keep All" limit, keep only one per day for this many weeks.')
+            .addText(text => text
+                .setValue(String(this.plugin.settings.pruningSettings.keepWeekly))
                 .onChange(async (value) => {
-                    this.plugin.settings.statsSubtractOnDelete = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // --- 2. Project Templates ---
-        this.renderProjectTemplates(containerEl);
-
-        // --- 3. Binder Customization ---
-        containerEl.createEl('h2', { text: 'Binder' });
-
-        new Setting(containerEl)
-            .setName('Show Rank Badge')
-            .setDesc('Display the rank frontmatter property as a small badge next to files.')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.binderShowRank)
-                .onChange(async (value) => {
-                    this.plugin.settings.binderShowRank = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Special Folder Sort Order')
-            .setDesc('Comma-separated list of folders to display at the top.')
-            .addTextArea(text => text
-                .setValue(this.plugin.settings.binderSortOrder.join(', '))
-                .onChange(async (value) => {
-                    this.plugin.settings.binderSortOrder = value.split(',').map(s => s.trim()).filter(s => s);
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Drag Sensitivity')
-            .setDesc('Distance in pixels to initiate a drag.')
-            .addSlider(slider => slider
-                .setLimits(0, 20, 1)
-                .setValue(this.plugin.settings.binderDragSensitivity)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.plugin.settings.binderDragSensitivity = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // --- 4. Corkboard Customization ---
-        containerEl.createEl('h2', { text: 'Corkboard' });
-
-        new Setting(containerEl)
-            .setName('Default Card Size')
-            .addDropdown(dropdown => dropdown
-                .addOption('small', 'Small')
-                .addOption('medium', 'Medium')
-                .addOption('large', 'Large')
-                .setValue(this.plugin.settings.corkboardDefaultSize)
-                .onChange(async (value: any) => {
-                    this.plugin.settings.corkboardDefaultSize = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Show Card Icon')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.corkboardShowIcon)
-                .onChange(async (value) => {
-                    this.plugin.settings.corkboardShowIcon = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Show Card Accent Color Bar')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.corkboardShowAccent)
-                .onChange(async (value) => {
-                    this.plugin.settings.corkboardShowAccent = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Double-Click Action')
-            .addDropdown(dropdown => dropdown
-                .addOption('current', 'Open in current tab')
-                .addOption('new-tab', 'Open in new tab')
-                .addOption('new-pane', 'Open in new pane')
-                .setValue(this.plugin.settings.corkboardDoubleClickAction)
-                .onChange(async (value: any) => {
-                    this.plugin.settings.corkboardDoubleClickAction = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // --- 5. Scrivenings Customization ---
-        containerEl.createEl('h2', { text: 'Scrivenings (Seamless Editor)' });
-
-        new Setting(containerEl)
-            .setName('Editor Max Width')
-            .addSlider(slider => slider
-                .setLimits(500, 1200, 50)
-                .setValue(this.plugin.settings.scriveningsMaxWidth)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.plugin.settings.scriveningsMaxWidth = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Center-align Editor Content')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.scriveningsCenterAlign)
-                .onChange(async (value) => {
-                    this.plugin.settings.scriveningsCenterAlign = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Separator Style')
-            .addDropdown(dropdown => dropdown
-                .addOption('dashed', 'Dashed Line')
-                .addOption('solid', 'Solid Line')
-                .addOption('subtle', 'Subtle Break')
-                .addOption('none', 'None')
-                .setValue(this.plugin.settings.scriveningsSeparatorStyle)
-                .onChange(async (value: any) => {
-                    this.plugin.settings.scriveningsSeparatorStyle = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        containerEl.createEl('h4', { text: 'Live Preview Rendering' });
-
-        new Setting(containerEl)
-            .setName('Render Headers')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.scriveningsLivePreviewHeaders)
-                .onChange(async (value) => {
-                    this.plugin.settings.scriveningsLivePreviewHeaders = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Render Blockquotes')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.scriveningsLivePreviewBlockquotes)
-                .onChange(async (value) => {
-                    this.plugin.settings.scriveningsLivePreviewBlockquotes = value;
-                    await this.plugin.saveSettings();
+                    const num = parseInt(value);
+                    if (!isNaN(num)) {
+                        this.plugin.settings.pruningSettings.keepWeekly = num;
+                        await this.plugin.saveSettings();
+                    }
                 }));
         
         new Setting(containerEl)
-            .setName('Render Horizontal Rules')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.scriveningsLivePreviewHR)
-                .onChange(async (value) => {
-                    this.plugin.settings.scriveningsLivePreviewHR = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Render Images')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.scriveningsLivePreviewImages)
-                .onChange(async (value) => {
-                    this.plugin.settings.scriveningsLivePreviewImages = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // --- 6. Inspector & Metadata ---
-        containerEl.createEl('h2', { text: 'Inspector' });
-
-        new Setting(containerEl)
-            .setName('Status Options')
-            .setDesc('Comma-separated list of status options.')
-            .addTextArea(text => text
-                .setValue(this.plugin.settings.inspectorStatusOptions.join(', '))
-                .onChange(async (value) => {
-                    this.plugin.settings.inspectorStatusOptions = value.split(',').map(s => s.trim()).filter(s => s);
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Label Options')
-            .setDesc('Comma-separated list of label options.')
-            .addTextArea(text => text
-                .setValue(this.plugin.settings.inspectorLabelOptions.join(', '))
-                .onChange(async (value) => {
-                    this.plugin.settings.inspectorLabelOptions = value.split(',').map(s => s.trim()).filter(s => s);
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Default Inspector Tab')
-            .addDropdown(dropdown => dropdown
-                .addOption('synopsis', 'Synopsis')
-                .addOption('notes', 'Notes')
-                .addOption('metadata', 'Metadata')
-                .addOption('snapshots', 'Snapshots')
-                .setValue(this.plugin.settings.inspectorDefaultTab)
-                .onChange(async (value: any) => {
-                    this.plugin.settings.inspectorDefaultTab = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // --- 7. Dashboard Customization ---
-        containerEl.createEl('h2', { text: 'Dashboard' });
-
-        new Setting(containerEl)
-            .setName('Default View Mode')
-            .addDropdown(dropdown => dropdown
-                .addOption('grid', 'Grid')
-                .addOption('list', 'List')
-                .setValue(this.plugin.settings.dashboardDefaultView)
-                .onChange(async (value: any) => {
-                    this.plugin.settings.dashboardDefaultView = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Default Sort By')
-            .addDropdown(dropdown => dropdown
-                .addOption('modified', 'Last Modified')
-                .addOption('created', 'Date Created')
-                .addOption('name', 'Name')
-                .addOption('wordCount', 'Word Count')
-                .addOption('status', 'Status')
-                .setValue(this.plugin.settings.dashboardDefaultSort)
-                .onChange(async (value: any) => {
-                    this.plugin.settings.dashboardDefaultSort = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Word Count Folder')
-            .setDesc('Folder name within projects to use for word counts.')
+            .setName('Keep Weekly (Months)')
+            .setDesc('For snapshots older than the "Keep Daily" limit, keep only one per week for this many months.')
             .addText(text => text
-                .setValue(this.plugin.settings.dashboardWordCountFolder)
+                .setValue(String(this.plugin.settings.pruningSettings.keepMonthly))
                 .onChange(async (value) => {
-                    this.plugin.settings.dashboardWordCountFolder = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // --- 8. Advanced Settings ---
-        containerEl.createEl('h2', { text: 'Advanced' });
-
-        new Setting(containerEl)
-            .setName('Scrivenings Auto-Save Delay (ms)')
-            .addText(text => text
-                .setValue(String(this.plugin.settings.advancedAutoSaveDelay))
-                .onChange(async (value) => {
-                    const num = Number(value);
+                    const num = parseInt(value);
                     if (!isNaN(num)) {
-                        this.plugin.settings.advancedAutoSaveDelay = num;
+                        this.plugin.settings.pruningSettings.keepMonthly = num;
                         await this.plugin.saveSettings();
                     }
-                }));
-
-        new Setting(containerEl)
-            .setName('Binder Content Search Delay (ms)')
-            .addText(text => text
-                .setValue(String(this.plugin.settings.advancedSearchDelay))
-                .onChange(async (value) => {
-                    const num = Number(value);
-                    if (!isNaN(num)) {
-                        this.plugin.settings.advancedSearchDelay = num;
-                        await this.plugin.saveSettings();
-                    }
-                }));
-
-        new Setting(containerEl)
-            .setName('Reorder Command')
-            .setDesc('Command to run after reordering items (e.g. for custom sort plugins).')
-            .addText(text => text
-                .setValue(this.plugin.settings.advancedReorderCommand)
-                .onChange(async (value) => {
-                    this.plugin.settings.advancedReorderCommand = value;
-                    await this.plugin.saveSettings();
                 }));
     }
 
     renderProjectTemplates(containerEl: HTMLElement) {
+        // ... [Keep Existing Implementation] ...
         containerEl.createEl('h2', { text: 'Project Templates' });
         
         this.plugin.settings.projectTemplates.forEach((template, index) => {

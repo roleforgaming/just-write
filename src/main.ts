@@ -12,12 +12,14 @@ import { SessionManager } from './utils/sessionManager';
 import { SnapshotManager } from './utils/snapshotManager'; // Import
 import { Logger } from './utils/logger'; // Import
 import { NovelistSettingTab, NovelistSettings, DEFAULT_SETTINGS } from './settings';
+import { AutoSnapshotManager } from './features/snapshots/autoSnapshotManager'; // Import
 
 export default class NovelistPlugin extends Plugin {
     settings: NovelistSettings;
     sessionManager: SessionManager;
-    snapshotManager: SnapshotManager; // New
-    logger: Logger; // New
+    snapshotManager: SnapshotManager;
+    autoSnapshotManager: AutoSnapshotManager;
+    logger: Logger;
     statusBarItem: HTMLElement;
 
     async onload() {
@@ -25,9 +27,19 @@ export default class NovelistPlugin extends Plugin {
 
         // Initialize Managers
         this.logger = new Logger(this);
-        this.snapshotManager = new SnapshotManager(this.app, this.logger);
+        
+        // Pass settings getter to SnapshotManager for pruning
+        this.snapshotManager = new SnapshotManager(this.app, this.logger, () => ({
+            enabled: this.settings.enablePruning,
+            rules: this.settings.pruningSettings
+        }));
+
         this.sessionManager = new SessionManager(this.app, this);
         const projectManager = new ProjectManager(this.app, this);
+        
+        // Initialize Automation
+        this.autoSnapshotManager = new AutoSnapshotManager(this, this.snapshotManager, this.settings, this.logger);
+        this.autoSnapshotManager.load();
 
         // --- 1. Register Views ---
         this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf, this));
@@ -214,6 +226,12 @@ export default class NovelistPlugin extends Plugin {
     }
 
     async onunload() {
+        // Clean up automation
+        if (this.autoSnapshotManager) {
+            this.autoSnapshotManager.unload();
+        }
+
+        // ... detach leaves ...
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_CORKBOARD);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_SCRIVENINGS);

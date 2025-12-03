@@ -124,16 +124,21 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
     const handleCompare = async (snapshot: Snapshot) => {
         const currentContent = await app.vault.read(file);
         
-        const snapshotFile = app.vault.getAbstractFileByPath(snapshot.path);
-        if (snapshotFile instanceof TFile) {
-            // Using adapter read is safer for hidden files, but TFile is available here
-            const raw = await app.vault.read(snapshotFile);
+        try {
+            // FIX: Use adapter.read to reliably get content from hidden snapshot folder
+            const raw = await app.vault.adapter.read(snapshot.path);
+            
+            // Extract the body (strip the custom frontmatter added by SnapshotManager)
             const parts = raw.split('\n---\n');
             const snapBody = parts.length > 1 ? parts.slice(1).join('\n---\n').trimStart() : raw;
             
             // FIX: Use window.moment()
-            const dateStr = window.moment(snapshot.timestamp).format('MMM D, h:mm a');
+            const dateStr = (window as any).moment(snapshot.timestamp).format('MMM D, h:mm a');
             new SnapshotCompareModal(app, file, dateStr, currentContent, snapBody).open();
+            
+        } catch (e) {
+            new Notice("Failed to read snapshot content.");
+            console.error("Error reading snapshot file:", e);
         }
     };
 

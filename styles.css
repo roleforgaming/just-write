@@ -1894,48 +1894,47 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    padding: 0;
 }
 
 .compare-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     padding: 10px;
     background: var(--background-secondary);
     border-bottom: 1px solid var(--background-modifier-border);
     font-weight: bold;
+    color: var(--text-normal);
 }
 
 .diff-container {
     flex-grow: 1;
     overflow-y: auto;
     font-family: var(--font-monospace);
-    font-size: 0.85em;
+    font-size: 0.9em;
+    line-height: 1.5;
     white-space: pre-wrap;
     background: var(--background-primary);
-    padding: 15px;
+    padding: 20px;
+    color: var(--text-normal);
 }
 
-.diff-line {
-    padding: 2px 0;
-    line-height: 1.4;
+.diff-container ins {
+    text-decoration: none;
+    background-color: rgba(var(--color-green-rgb), 0.25);
+    padding: 1px 0;
 }
 
-.diff-green {
-    background-color: rgba(var(--color-green-rgb), 0.2);
-}
-
-.diff-red {
-    background-color: rgba(var(--color-red-rgb), 0.2);
+.diff-container del {
+    background-color: rgba(var(--color-red-rgb), 0.25);
+    padding: 1px 0;
     text-decoration: line-through;
-    opacity: 0.7;
+    opacity: 0.8;
 }
-
-/* .diff-neutral {
-     No bg
-} */
 
 .compare-footer {
     padding: 10px;
     border-top: 1px solid var(--background-modifier-border);
     text-align: right;
+    background: var(--background-secondary);
 }
