@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { App, TFile, Notice } from 'obsidian';
 import { ProjectManager } from '../utils/projectManager';
-import { BookOpen, NotebookPen, Tags, Camera, Plus, Trash2, RotateCcw, FileDiff, Search, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { BookOpen, NotebookPen, Tags, Camera, Plus, Trash2, RotateCcw, FileDiff, Search, X, ArrowUp, ArrowDown, Pin } from 'lucide-react';
 import NovelistPlugin from '../main';
 import { Snapshot } from '../utils/snapshotManager';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -207,12 +207,40 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         }
     };
 
+    const handlePinSnapshot = async (snapshot: Snapshot, pin: boolean) => {
+        if (isReadOnly) return;
+        
+        setSnapshots(prev => prev.map(s => s.path === snapshot.path ? { ...s, isPinned: pin } : s));
+        
+        setIsSnapshotsLoading(true);
+        try {
+            await plugin.snapshotManager.updateSnapshotMetadata(snapshot, { isPinned: pin });
+            new Notice(pin ? "Snapshot pinned. It will be excluded from auto-pruning." : "Snapshot unpinned.");
+            await loadSnapshots(); 
+        } catch (e) {
+            new Notice("Failed to update pin status.");
+            console.error("Snapshot Pin Failure:", e);
+            setSnapshots(prev => prev.map(s => s.path === snapshot.path ? { ...s, isPinned: !pin } : s));
+        } finally {
+            setIsSnapshotsLoading(false);
+        }
+    };
+
     const handleDeleteSnapshot = (snapshot: Snapshot) => {
         if (isReadOnly) return;
-        new ConfirmModal(app, "Delete Snapshot", "Permanently delete this version?", [
+        
+        let message = "Permanently delete this version?";
+        let warningText = 'Delete';
+
+        if (snapshot.isPinned) {
+            message = `Are you sure you want to permanently delete this PINNED snapshot? It was explicitly protected from auto-pruning.`;
+            warningText = 'Permanently Delete Pinned';
+        }
+
+        new ConfirmModal(app, "Delete Snapshot", message, [ 
             { text: 'Cancel', action: () => {} },
             { 
-                text: 'Delete', 
+                text: warningText, 
                 warning: true, 
                 action: async () => {
                     await plugin.snapshotManager.deleteSnapshot(snapshot);
@@ -312,7 +340,6 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                             </button>
                         </div>
                         <div className="novelist-snapshots-container">
-                            {/* Filter/Sort/Search Toolbar */}
                             <div className="novelist-snapshots-toolbar">
                                 <div className="novelist-binder-filter">
                                     <Search size={12} className="search-icon-input" />
@@ -352,18 +379,41 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                                 )}
                                 
                                 {filteredAndSortedSnapshots.map(snap => (
-                                    <div key={snap.timestamp} className="snapshot-item">
-                                        <div className="snapshot-header">
-                                            <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
-                                            <span className="snapshot-words">{snap.wordCount} words</span>
-                                        </div>
-                                        {snap.note && <div className="snapshot-note">{snap.note}</div>}
-                                        <div className="snapshot-actions">
-                                            <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
-                                            <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
-                                            <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
-                                        </div>
+                                <div key={snap.timestamp} className="snapshot-item">
+                                    <div className="snapshot-header">
+                                        <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
+                                        <span className="snapshot-words">{snap.wordCount} words</span>
                                     </div>
+                                    
+                                    {snap.note && <div className="snapshot-note">{snap.note}</div>}
+                                    
+                                    {/* FIX 1: Wrap Pin with span for Title attribute */}
+                                    <div className="snapshot-status-indicators">
+                                         {snap.isPinned && (
+                                            <span title="Excluded from Pruning">
+                                                <Pin size={14} className="is-pinned-icon"/>
+                                            </span>
+                                         )}
+                                    </div>
+
+                                    <div className="snapshot-actions">
+                                        <button 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                handlePinSnapshot(snap, !snap.isPinned); 
+                                            }} 
+                                            disabled={isReadOnly}
+                                            title={snap.isPinned ? "Unpin (Allow Pruning)" : "Pin (Exclude from Pruning)"}
+                                            className={`pin-toggle-btn ${snap.isPinned ? 'is-pinned' : ''}`}
+                                        >
+                                            <Pin size={14}/>
+                                        </button>
+
+                                        <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
+                                        <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
+                                        <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
+                                    </div>
+                                </div>
                                 ))}
                             </div>
                         </div>

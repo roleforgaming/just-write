@@ -9,6 +9,7 @@ export interface Snapshot {
     timestamp: number;
     note?: string;
     wordCount: number;
+    isPinned: boolean;
 }
 
 export class SnapshotManager {
@@ -48,7 +49,6 @@ export class SnapshotManager {
 
             const fileContent = await this.app.vault.read(file);
             
-            // FIX: Use window.moment()
             const timestamp = (window as any).moment().valueOf();
             const wordCount = (fileContent.match(/\S+/g) || []).length;
             const safeNote = note ? note.replace(/"/g, '\\"') : '';
@@ -58,9 +58,11 @@ export class SnapshotManager {
                 timestamp,
                 note: safeNote,
                 snapshotWordCount: wordCount,
+                isPinned: false, // <--- DEFAULT TO FALSE
             };
             
-            const snapshotContent = `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n\n${fileContent}`;
+            const snapshotContent = `---\n${JSON.stringify(frontmatter, null, 2)}\n---
+${fileContent}`; // Corrected: removed extra newlines, assuming content starts right after '---'
             
             const snapshotFilename = `${(window as any).moment(timestamp).format('YYYY-MM-DD-HHmmss')}.md`;
             const snapshotPath = normalizePath(`${snapshotDir}/${snapshotFilename}`);
@@ -97,6 +99,7 @@ export class SnapshotManager {
                 const noteMatch = content.match(/"note":\s*"(.*)"/);
                 const wordCountMatch = content.match(/"snapshotWordCount":\s*(\d+)/);
                 const origPathMatch = content.match(/"originalPath":\s*"(.*)"/);
+                const isPinnedMatch = content.match(/"isPinned":\s*(true|false)/); // <--- ADDED
 
                 if (timestampMatch) {
                     snapshots.push({
@@ -104,7 +107,8 @@ export class SnapshotManager {
                         originalPath: origPathMatch ? origPathMatch[1] : file.path,
                         timestamp: parseInt(timestampMatch[1]),
                         note: noteMatch ? noteMatch[1] : '', 
-                        wordCount: wordCountMatch ? parseInt(wordCountMatch[1]) : 0
+                        wordCount: wordCountMatch ? parseInt(wordCountMatch[1]) : 0,
+                        isPinned: isPinnedMatch ? (isPinnedMatch[1] === 'true') : false, // <--- ADDED
                     });
                 }
             } catch (e) {
@@ -114,6 +118,44 @@ export class SnapshotManager {
 
         return snapshots.sort((a, b) => b.timestamp - a.timestamp);
     }
+    
+    // <--- NEW METHOD TO UPDATE METADATA --->
+    async updateSnapshotMetadata(snapshot: Snapshot, data: { isPinned?: boolean }) {
+        this.logger.log(`Updating metadata for snapshot: ${snapshot.path}`);
+        
+        try {
+            const rawContent = await this.app.vault.adapter.read(snapshot.path);
+            const parts = rawContent.split('\n---'); // Use split by '\n---' to separate frontmatter fence
+            const fmBlock = parts[0].trim().replace(/^---/, '');
+            const contentBody = parts.length > 1 ? parts.slice(1).join('\n---').trim() : '';
+
+            let fm: any = {};
+            try {
+                fm = JSON.parse(fmBlock); // Assuming JSON format from createSnapshot
+            } catch (e) {
+                // Fallback: Crude re-writing if JSON parsing fails due to manual edits
+                this.logger.error("Failed to parse snapshot frontmatter JSON, using object assignment.", e);
+            }
+
+            // Update properties
+            if (data.isPinned !== undefined) {
+                fm.isPinned = data.isPinned;
+            }
+
+            // Reconstruct content
+            const newFrontmatterBlock = `---\n${JSON.stringify(fm, null, 2)}\n---`;
+            // Re-join with a leading newline for standard Markdown structure if content exists
+            const newContent = newFrontmatterBlock + (contentBody ? `\n\n${contentBody}` : ''); 
+
+            await this.app.vault.adapter.write(snapshot.path, newContent);
+            this.logger.log(`Snapshot metadata updated.`);
+
+        } catch (e) {
+            this.logger.error(`Failed to update snapshot metadata for ${snapshot.path}`, e);
+            throw e;
+        }
+    }
+    // <--- END NEW METHOD --->
 
     async restoreSnapshot(fileToRestore: TFile, snapshot: Snapshot): Promise<void> {
         this.logger.log(`Restoring snapshot ${snapshot.path} to ${fileToRestore.path}`);
@@ -154,33 +196,39 @@ export class SnapshotManager {
     // --- Pruning Logic ---
     async pruneSnapshots(file: TFile, rules: PruningSettings): Promise<void> {
         this.logger.log(`Pruning snapshots for ${file.basename}`);
-        const snapshots = await this.getSnapshots(file); // Already sorted desc (newest first)
+        const allSnapshots = await this.getSnapshots(file); // Already sorted desc (newest first)
         
-        if (snapshots.length === 0) return;
+        if (allSnapshots.length === 0) return;
+
+        const unpinnedSnapshots = allSnapshots.filter(snap => !snap.isPinned); // <--- FILTER PINNED
+
+        if (unpinnedSnapshots.length === 0) {
+            this.logger.log("Pruning: All snapshots are pinned, skipping pruning for this file.");
+            return;
+        }
 
         const moment = (window as any).moment;
         const now = moment();
         
         const toDelete: Snapshot[] = [];
-        const keptDaily = new Set<string>();   // YYYY-MM-DD
-        const keptWeekly = new Set<string>();  // YYYY-WW
-        const keptMonthly = new Set<string>(); // YYYY-MM
+        const keptDaily = new Set<string>();
+        const keptWeekly = new Set<string>();
+        const keptMonthly = new Set<string>();
 
         // Time thresholds
         const dailyLimit = now.clone().subtract(rules.keepDaily, 'days');
         const weeklyLimit = now.clone().subtract(rules.keepWeekly, 'weeks');
         const monthlyLimit = now.clone().subtract(rules.keepMonthly, 'months');
 
-        for (const snap of snapshots) {
+        for (const snap of unpinnedSnapshots) { // <--- ITERATE OVER UNPINNED ONLY
             const snapTime = moment(snap.timestamp);
             
             // 1. "Keep All" Window
             if (snapTime.isAfter(dailyLimit)) {
-                // Keep everything in this window
                 continue;
             }
 
-            // 2. "Keep Daily" Window (One per day)
+            // 2. "Keep Daily" Window 
             if (snapTime.isAfter(weeklyLimit)) {
                 const dayKey = snapTime.format('YYYY-MM-DD');
                 if (!keptDaily.has(dayKey)) {
@@ -191,15 +239,7 @@ export class SnapshotManager {
                 continue;
             }
 
-            // 3. "Keep Weekly" Window (One per week/month? Usually implied "One per week")
-            // Rules say "Keep Weekly: 4" -> keep 4 weeks of history.
-            // But usually this means "One snapshot per week" or "One per day for X weeks".
-            // The AC says "retention policies (daily, weekly, monthly)".
-            // Interpretation:
-            //   - recent days: keep all
-            //   - recent weeks: keep 1/day
-            //   - recent months: keep 1/week
-            
+            // 3. "Keep Weekly" Window 
             if (snapTime.isAfter(monthlyLimit)) {
                 const weekKey = snapTime.format('YYYY-WW');
                 if (!keptWeekly.has(weekKey)) {
@@ -210,14 +250,11 @@ export class SnapshotManager {
                 continue;
             }
 
-            // 4. Older than monthly limit -> Delete? 
-            // Or Keep 1/Month indefinitely? 
-            // AC says "exceeding the retention policy are automatically deleted".
-            // So if it's older than keepMonthly, we delete it.
+            // 4. Older than monthly limit -> Delete
             toDelete.push(snap);
         }
 
-        this.logger.log(`Pruning: Deleting ${toDelete.length} old snapshots.`);
+        this.logger.log(`Pruning: Deleting ${toDelete.length} old snapshots. Kept ${allSnapshots.length - unpinnedSnapshots.length} pinned snapshots.`); // <--- UPDATED LOG
         for (const snap of toDelete) {
             await this.deleteSnapshot(snap);
         }
