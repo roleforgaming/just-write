@@ -2108,3 +2108,42 @@ body {
     text-align: right;
     background: var(--background-secondary);
 }
+
+/* Snapshot Time Hover Effect */
+/* Removed .snapshot-time-container:hover logic */
+
+/* Parent Element Hover Trigger */
+.snapshot-item:hover .snapshot-time-container .time-relative {
+    display: none;
+}
+
+.snapshot-item:hover .snapshot-time-container .time-exact {
+    display: inline;
+    color: var(--interactive-accent);
+    font-weight: 600;
+}
+
+/* Ensure default state is set if needed, although the component now sets it */
+.snapshot-time-container .time-exact {
+    display: none;
+}
+.snapshot-time-container .time-relative {
+    display: inline;
+}
+
+.snapshot-time-container {
+    display: inline-block;
+    /* Removed cursor: help here, may re-add if needed */
+    min-width: 80px;
+}
+
+/* Re-add the hover cue to the parent element for better UX */
+.snapshot-item {
+    /* ... existing snapshot-item styles ... */
+    cursor: default; /* Keep default on the card body */
+}
+
+/* Optional: Add visual cue to the header/time */
+.snapshot-item:hover .snapshot-time-container {
+    cursor: help;
+}

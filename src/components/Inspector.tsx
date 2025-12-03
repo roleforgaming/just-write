@@ -15,6 +15,27 @@ interface InspectorProps {
 
 type Tab = 'synopsis' | 'notes' | 'metadata' | 'snapshots';
 
+// HELPER COMPONENT (CSS-based hover, structure remains the same)
+const SnapshotTimeDisplay: React.FC<{ timestamp: number }> = ({ timestamp }) => {
+    // Use window.moment() for formatting
+    const moment = (window as any).moment;
+    
+    // Relative time (e.g., 14 days ago)
+    const relativeTime = moment(timestamp).fromNow();
+    
+    // Exact time (e.g., Tue Dec 03, 2025 @ 3:11 P.M.)
+    const exactTime = moment(timestamp).format('ddd MMM DD, YYYY @ h:mm A');
+
+    // FIX: Removed title from container, but it's not strictly necessary. 
+    // The component structure is correct for the CSS fix.
+    return (
+        <span className="snapshot-time-container">
+            <span className="time-relative">{relativeTime}</span>
+            <span className="time-exact" title={exactTime}>{exactTime}</span>
+        </span>
+    );
+};
+
 export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
     const [activeTab, setActiveTab] = React.useState<Tab>('synopsis');
     
@@ -102,9 +123,8 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
 
     const handleRestore = (snapshot: Snapshot) => {
         if (isReadOnly) return;
-        // FIX: Use window.moment()
         new ConfirmModal(app, "Restore Snapshot", 
-            `Are you sure you want to restore the snapshot from ${window.moment(snapshot.timestamp).fromNow()}? Current content will be backed up automatically.`, 
+            `Are you sure you want to restore the snapshot from ${(window as any).moment(snapshot.timestamp).fromNow()}? Current content will be backed up automatically.`, 
             [
                 { text: 'Cancel', action: () => {} },
                 { 
@@ -125,14 +145,10 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         const currentContent = await app.vault.read(file);
         
         try {
-            // FIX: Use adapter.read to reliably get content from hidden snapshot folder
             const raw = await app.vault.adapter.read(snapshot.path);
-            
-            // Extract the body (strip the custom frontmatter added by SnapshotManager)
             const parts = raw.split('\n---\n');
             const snapBody = parts.length > 1 ? parts.slice(1).join('\n---\n').trimStart() : raw;
             
-            // FIX: Use window.moment()
             const dateStr = (window as any).moment(snapshot.timestamp).format('MMM D, h:mm a');
             new SnapshotCompareModal(app, file, dateStr, currentContent, snapBody).open();
             
@@ -157,7 +173,6 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         ]).open();
     };
 
-    // Metadata Handlers
     const handleSave = async (key: string, value: any) => { if(!isReadOnly) app.fileManager.processFrontMatter(file, (fm: any) => { fm[key] = value; }); };
     const handleAddMetadata = async () => { if(!newMetaKey.trim() || isReadOnly) return; await app.fileManager.processFrontMatter(file, (fm: any) => { fm[newMetaKey.trim()] = newMetaValue; }); setNewMetaKey(''); setNewMetaValue(''); };
     const handleDeleteMetadata = async (key: string) => { if(!isReadOnly) await app.fileManager.processFrontMatter(file, (fm: any) => { delete fm[key]; }); };
@@ -259,8 +274,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                             {snapshots.map(snap => (
                                 <div key={snap.timestamp} className="snapshot-item">
                                     <div className="snapshot-header">
-                                        {/* FIX: Use window.moment() */}
-                                        <span className="snapshot-time">{window.moment(snap.timestamp).fromNow()}</span>
+                                        <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
                                         <span className="snapshot-words">{snap.wordCount} words</span>
                                     </div>
                                     {snap.note && <div className="snapshot-note">{snap.note}</div>}
