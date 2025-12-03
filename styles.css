@@ -1690,3 +1690,95 @@ body {
 .novelist-history-table tr:hover {
     background-color: var(--background-modifier-hover);
 }
+
+/* --- Statistics View Styles (Phase 4 Additions) --- */
+
+.novelist-stats-subheader-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 40px;
+    margin-bottom: 15px;
+}
+
+.novelist-stats-subheader-flex .novelist-stats-subheader {
+    margin: 0;
+}
+
+.novelist-stats-subheader-flex .novelist-tool-btn {
+    font-size: 0.9em;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.novelist-history-chart {
+    display: flex;
+    gap: 2px; /* Small gap between bars */
+    height: 180px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 20px 10px 10px 10px;
+    align-items: flex-end; /* Bars grow from the bottom */
+    margin-bottom: 20px;
+}
+
+.chart-bar-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    position: relative;
+    text-align: center;
+}
+
+.chart-bar {
+    width: 80%;
+    min-height: 2px; /* Ensure even 0-value bars are visible */
+    background: var(--interactive-accent);
+    border-radius: 3px 3px 0 0;
+    transition: height 0.3s ease-out, background-color 0.2s;
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+.chart-bar-wrapper:hover .chart-bar {
+    background: var(--color-green);
+}
+
+.chart-bar-value {
+    position: absolute;
+    bottom: 100%;
+    margin-bottom: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 600;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.chart-bar-wrapper:hover .chart-bar-value {
+    opacity: 1;
+}
+
+.chart-label {
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-top: 6px;
+}
+
+.chart-label-month {
+    font-size: 0.7em;
+    color: var(--text-muted);
+}

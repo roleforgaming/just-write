@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { App, TFolder } from 'obsidian';
 import { ProjectManager } from '../../utils/projectManager';
-import { Target, Calendar, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { Target, Calendar, TrendingUp, Clock, AlertCircle, FileDown } from 'lucide-react';
 
 interface StatisticsProps {
     app: App;
@@ -18,6 +18,42 @@ const getLocalDateString = (date: Date = new Date()): string => {
 
 // Helper to check if a string is in YYYY-MM-DD format
 const isValidDateString = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+
+// --- Phase 4: History Chart Component ---
+const HistoryChart: React.FC<{ data: [string, number][] }> = ({ data }) => {
+    const maxCount = useMemo(() => Math.max(1, ...data.map(d => Number(d[1]))), [data]);
+    
+    // Display the last ~14 days for a clean look, in chronological order
+    const chartData = useMemo(() => data.slice(0, 14).reverse(), [data]);
+
+    if (chartData.length === 0) {
+        return null; // Don't render an empty chart
+    }
+
+    return (
+        <div className="novelist-history-chart">
+            {chartData.map(([date, count]) => {
+                const dateParts = date.split('-').map(Number);
+                const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                const dayLabel = d.toLocaleDateString(undefined, { day: 'numeric' });
+                const monthLabel = d.toLocaleDateString(undefined, { month: 'short' });
+                
+                const heightPercent = (Number(count) / maxCount) * 100;
+
+                return (
+                    <div key={date} className="chart-bar-wrapper" title={`${d.toLocaleDateString()}: ${Number(count).toLocaleString()} words`}>
+                        <div className="chart-bar" style={{ height: `${heightPercent}%` }}>
+                            <span className="chart-bar-value">{Number(count).toLocaleString()}</span>
+                        </div>
+                        <div className="chart-label">{dayLabel}</div>
+                        <div className="chart-label-month">{monthLabel}</div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 
 export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
     const pm = useMemo(() => new ProjectManager(app), [app]);
@@ -103,13 +139,33 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
 
 
     // Sort history for display (newest first) and filter out bad data
-    const historyEntries = useMemo(() => {
+    const historyEntries = useMemo((): [string, number][] => {
         if (!meta?.writingHistory) return [];
         return Object.entries(meta.writingHistory)
             .filter(([date, count]) => isValidDateString(date) && !isNaN(Number(count)))
+            .map(([date, count]): [string, number] => [date, Number(count)])
             .sort((a, b) => b[0].localeCompare(a[0]))
             .slice(0, 30);
     }, [meta?.writingHistory]);
+    
+    // --- Phase 4: Data Export ---
+    const handleExportCsv = () => {
+        if (historyEntries.length === 0) return;
+
+        const headers = "Date,Words Written";
+        const rows = historyEntries.map(([date, count]) => `${date},${Number(count)}`).join('\n');
+        const csvContent = `${headers}\n${rows}`;
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${project.name}-writing-history.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <div className="novelist-stats-container">
@@ -168,8 +224,18 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
                     </div>
                 )}
             </div>
+            
+            <div className="novelist-stats-subheader-flex">
+                <h3 className="novelist-stats-subheader">Writing History (Last 30 Days)</h3>
+                {historyEntries.length > 0 && (
+                    <button className="novelist-tool-btn" onClick={handleExportCsv} title="Export as CSV">
+                        <FileDown size={14} /> Export
+                    </button>
+                )}
+            </div>
 
-            <h3 className="novelist-stats-subheader">Writing History (Last 30 Days)</h3>
+            <HistoryChart data={historyEntries} />
+
             <div className="novelist-history-table-wrapper">
                 <table className="novelist-history-table">
                     <thead>
