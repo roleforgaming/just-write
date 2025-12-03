@@ -1,5 +1,3 @@
-// src/components/Inspector.tsx
-
 import * as React from 'react';
 import { App, TFile, Notice } from 'obsidian';
 import { ProjectManager } from '../utils/projectManager';
@@ -17,28 +15,28 @@ interface InspectorProps {
 
 type Tab = 'synopsis' | 'notes' | 'metadata' | 'snapshots';
 
-// UPDATED HELPER COMPONENT (CSS-based hover)
+// HELPER COMPONENT (CSS-based hover, structure remains the same)
 const SnapshotTimeDisplay: React.FC<{ timestamp: number }> = ({ timestamp }) => {
     // Use window.moment() for formatting
     const moment = (window as any).moment;
     
-    // Relative time (e.g., 5 days ago)
+    // Relative time (e.g., 14 days ago)
     const relativeTime = moment(timestamp).fromNow();
     
     // Exact time (e.g., Tue Dec 03, 2025 @ 3:11 P.M.)
     const exactTime = moment(timestamp).format('ddd MMM DD, YYYY @ h:mm A');
 
+    // FIX: Removed title from container, but it's not strictly necessary. 
+    // The component structure is correct for the CSS fix.
     return (
-        <span className="snapshot-time-container" title={exactTime}>
+        <span className="snapshot-time-container">
             <span className="time-relative">{relativeTime}</span>
-            <span className="time-exact">{exactTime}</span>
+            <span className="time-exact" title={exactTime}>{exactTime}</span>
         </span>
     );
 };
-// END UPDATED HELPER COMPONENT
 
 export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
-    // ... (Rest of the Inspector component code remains exactly the same as before)
     const [activeTab, setActiveTab] = React.useState<Tab>('synopsis');
     
     // Document State
@@ -148,8 +146,6 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         
         try {
             const raw = await app.vault.adapter.read(snapshot.path);
-            
-            // Extract the body
             const parts = raw.split('\n---\n');
             const snapBody = parts.length > 1 ? parts.slice(1).join('\n---\n').trimStart() : raw;
             
@@ -177,7 +173,6 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         ]).open();
     };
 
-    // Metadata Handlers
     const handleSave = async (key: string, value: any) => { if(!isReadOnly) app.fileManager.processFrontMatter(file, (fm: any) => { fm[key] = value; }); };
     const handleAddMetadata = async () => { if(!newMetaKey.trim() || isReadOnly) return; await app.fileManager.processFrontMatter(file, (fm: any) => { fm[newMetaKey.trim()] = newMetaValue; }); setNewMetaKey(''); setNewMetaValue(''); };
     const handleDeleteMetadata = async (key: string) => { if(!isReadOnly) await app.fileManager.processFrontMatter(file, (fm: any) => { delete fm[key]; }); };
