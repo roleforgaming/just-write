@@ -1,10 +1,11 @@
 // src/features/snapshots/autoSnapshotManager.ts
 
-import { App, Workspace, TFile, Plugin, MarkdownView } from 'obsidian';
+import { App, Workspace, TFile, MarkdownView } from 'obsidian';
 import { NovelistSettings } from '../../settings';
 import { SnapshotManager } from '../../utils/snapshotManager';
 import { Logger } from '../../utils/logger';
 import NovelistPlugin from '../../main';
+import { ProjectManager } from '../../utils/projectManager';
 
 // Helper function: Standardizes date to YYYY-MM-DD format
 const getLocalDateString = (date: Date = new Date()): string => {
@@ -21,6 +22,7 @@ export class AutoSnapshotManager {
     private snapshotManager: SnapshotManager;
     private settings: NovelistSettings;
     private logger: Logger;
+    private projectManager: ProjectManager;
     
     private dailyInterval: number | null = null;
 
@@ -31,6 +33,7 @@ export class AutoSnapshotManager {
         this.snapshotManager = snapshotManager;
         this.settings = settings;
         this.logger = logger;
+        this.projectManager = new ProjectManager(this.app, this.plugin);
     }
 
     load() {
@@ -60,14 +63,25 @@ export class AutoSnapshotManager {
         const leaves = this.workspace.getLeavesOfType('markdown');
         const filesToSnapshot = new Set<TFile>();
 
-        leaves.forEach(leaf => {
+        // Fix: Use for...of loop to await async project checks
+        // This ensures we catch projects even if metadata cache isn't fully ready on startup
+        for (const leaf of leaves) {
             if (leaf.view instanceof MarkdownView && leaf.view.file) {
-                filesToSnapshot.add(leaf.view.file);
+                // Only snapshot files that are part of a Novelist project
+                // Use Async version to fallback to file read if cache is cold
+                if (await this.projectManager.getProjectForFileAsync(leaf.view.file)) {
+                    filesToSnapshot.add(leaf.view.file);
+                }
             }
-        });
-
-        for (const file of Array.from(filesToSnapshot)) {
-            await this.snapshotManager.createSnapshot(file, 'Auto-snapshot: Session Start');
+        }
+        
+        if (filesToSnapshot.size > 0) {
+            this.logger.log(`AutoSnapshot: Found ${filesToSnapshot.size} open project files to snapshot.`);
+            for (const file of Array.from(filesToSnapshot)) {
+                await this.snapshotManager.createSnapshot(file, 'Auto-snapshot: Session Start');
+            }
+        } else {
+            this.logger.log('AutoSnapshot: No open project files found to snapshot.');
         }
     }
 
@@ -131,9 +145,17 @@ export class AutoSnapshotManager {
             this.settings.lastDailySnapshotDate = todayStr;
             await this.plugin.saveSettings();
             
-            const files = this.app.vault.getMarkdownFiles();
-            for (const file of files) {
-                await this.snapshotManager.createSnapshot(file, 'Auto-snapshot: Daily');
+            const allFiles = this.app.vault.getMarkdownFiles();
+            // Filter to only include files within a Novelist project
+            const projectFiles = allFiles.filter(file => this.projectManager.getProjectForFile(file));
+
+            if (projectFiles.length > 0) {
+                this.logger.log(`AutoSnapshot: Found ${projectFiles.length} project files for daily snapshot.`);
+                for (const file of projectFiles) {
+                    await this.snapshotManager.createSnapshot(file, 'Auto-snapshot: Daily');
+                }
+            } else {
+                this.logger.log('AutoSnapshot: No project files found for daily snapshot.');
             }
         }
     }

@@ -28,11 +28,52 @@ export class ProjectManager {
         return cache?.frontmatter?.type === PROJECT_TYPE_KEY;
     }
 
+    // New Async method to handle cache-miss scenarios (e.g., startup)
+    async isProjectAsync(folder: TFolder): Promise<boolean> {
+        const markerFile = folder.children.find(
+            c => c.name === PROJECT_MARKER_FILE && c instanceof TFile
+        ) as TFile;
+
+        if (!markerFile) return false;
+
+        const cache = this.app.metadataCache.getFileCache(markerFile);
+        if (cache?.frontmatter?.type === PROJECT_TYPE_KEY) {
+            return true;
+        }
+
+        // Fallback: Read file if cache is missing or incomplete
+        try {
+            const content = await this.app.vault.read(markerFile);
+            const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (fmMatch) {
+                // Check for "type: novelist-project" in the frontmatter block
+                return /^\s*type:\s*novelist-project/m.test(fmMatch[1]);
+            }
+        } catch (e) {
+            // Ignore read errors
+        }
+        return false;
+    }
+
     getProjectForFile(file: TAbstractFile): TFolder | null {
         let current: TFolder | null = file instanceof TFolder ? file : file.parent;
 
         while (current) {
             if (this.isProject(current)) {
+                return current;
+            }
+            if (current.isRoot()) break;
+            current = current.parent;
+        }
+        return null;
+    }
+
+    // Async version of getProjectForFile
+    async getProjectForFileAsync(file: TAbstractFile): Promise<TFolder | null> {
+        let current: TFolder | null = file instanceof TFolder ? file : file.parent;
+
+        while (current) {
+            if (await this.isProjectAsync(current)) {
                 return current;
             }
             if (current.isRoot()) break;
