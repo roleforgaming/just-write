@@ -178,16 +178,6 @@ export class NovelistSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Auto-snapshot on Session End')
-            .setDesc('Create a snapshot of all open files when the plugin unloads.')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.autoSnapshotOnSessionEnd)
-                .onChange(async (value) => {
-                    this.plugin.settings.autoSnapshotOnSessionEnd = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
             .setName('Enable Daily Auto-snapshot')
             .setDesc('Take a snapshot of every markdown file in the vault once a day.')
             .addToggle(toggle => toggle
