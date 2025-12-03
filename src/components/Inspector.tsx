@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { App, TFile, Notice } from 'obsidian';
 import { ProjectManager } from '../utils/projectManager';
-import { BookOpen, NotebookPen, Tags, Camera, Plus, Trash2, RotateCcw, FileDiff } from 'lucide-react';
+import { BookOpen, NotebookPen, Tags, Camera, Plus, Trash2, RotateCcw, FileDiff, Search, X, ArrowUp, ArrowDown } from 'lucide-react';
 import NovelistPlugin from '../main';
 import { Snapshot } from '../utils/snapshotManager';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -26,8 +26,6 @@ const SnapshotTimeDisplay: React.FC<{ timestamp: number }> = ({ timestamp }) => 
     // Exact time (e.g., Tue Dec 03, 2025 @ 3:11 P.M.)
     const exactTime = moment(timestamp).format('ddd MMM DD, YYYY @ h:mm A');
 
-    // FIX: Removed title from container, but it's not strictly necessary. 
-    // The component structure is correct for the CSS fix.
     return (
         <span className="snapshot-time-container">
             <span className="time-relative">{relativeTime}</span>
@@ -54,15 +52,23 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
     const [snapshots, setSnapshots] = React.useState<Snapshot[]>([]);
     const [snapshotNote, setSnapshotNote] = React.useState('');
     const [isSnapshotsLoading, setIsSnapshotsLoading] = React.useState(false);
+    
+    // NEW Snapshot UI State
+    const [snapshotQuery, setSnapshotQuery] = React.useState('');
+    const [snapshotSortKey, setSnapshotSortKey] = React.useState<'timestamp' | 'wordCount' | 'note'>('timestamp');
+    const [snapshotSortDirection, setSnapshotSortDirection] = React.useState<'desc' | 'asc'>('desc');
 
     // Check Read-Only
-    const pm = new ProjectManager(app);
+    const pm = React.useMemo(() => new ProjectManager(app), [app]);
     const isReadOnly = pm.isInTrash(file);
 
     const ignoredKeys = React.useMemo(() => new Set([
         'synopsis', 'status', 'label', 'notes', 'rank', 'icon', 
         'accentColor', 'type', 'tags', 'position', 'description', 
-        'created', 'modified', 'archived', 'author', 'deadline'
+        'created', 'modified', 'archived', 'author', 'deadline',
+        // Project metadata keys
+        'templates', 'mappings', 'icons', 'iconColors', 'targetWordCount',
+        'targetSessionCount', 'targetDeadline', 'writingHistory', 'wordCountFolders'
     ]), []);
 
     const refresh = React.useCallback(() => {
@@ -104,6 +110,49 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         });
         return () => { app.metadataCache.offref(eventRef); };
     }, [file, refresh, loadSnapshots]);
+
+    // NEW: Memoized Filter and Sort Logic
+    const filteredAndSortedSnapshots = React.useMemo(() => {
+        let list = snapshots;
+        
+        // 1. Filter
+        if (snapshotQuery) {
+            const query = snapshotQuery.toLowerCase();
+            list = list.filter(snap => 
+                (snap.note || '').toLowerCase().includes(query) ||
+                (window as any).moment(snap.timestamp).format('YYYY-MM-DD HH:mm').includes(query)
+            );
+        }
+        
+        // 2. Sort
+        return list.sort((a, b) => {
+            const dir = snapshotSortDirection === 'asc' ? 1 : -1;
+            
+            let aValue: any, bValue: any;
+
+            switch (snapshotSortKey) {
+                case 'wordCount':
+                    aValue = a.wordCount;
+                    bValue = b.wordCount;
+                    break;
+                case 'note':
+                    aValue = (a.note || '').toLowerCase();
+                    bValue = (b.note || '').toLowerCase();
+                    break;
+                case 'timestamp':
+                default:
+                    aValue = a.timestamp;
+                    bValue = b.timestamp;
+                    break;
+            }
+            
+            if (typeof aValue === 'string') {
+                return aValue.localeCompare(bValue) * dir;
+            }
+            
+            return (aValue - bValue) * dir;
+        });
+    }, [snapshots, snapshotQuery, snapshotSortKey, snapshotSortDirection]);
 
     const handleTakeSnapshot = async () => {
         if (isReadOnly) return;
@@ -249,7 +298,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                 )}
 
                 {activeTab === 'snapshots' && (
-                    <div className="novelist-snapshots-container">
+                    <>
                         <div className="snapshot-create-section">
                             <input 
                                 className="novelist-input" 
@@ -262,31 +311,63 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                                 <Camera size={14} /> Save Snapshot
                             </button>
                         </div>
+                        <div className="novelist-snapshots-container">
+                            {/* Filter/Sort/Search Toolbar */}
+                            <div className="novelist-snapshots-toolbar">
+                                <div className="novelist-binder-filter">
+                                    <Search size={12} className="search-icon-input" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search note/date..." 
+                                        value={snapshotQuery}
+                                        onChange={(e) => setSnapshotQuery(e.target.value)}
+                                        className="has-icon"
+                                    />
+                                    {snapshotQuery && <X size={12} className="clear-filter" onClick={() => setSnapshotQuery('')} />}
+                                </div>
+                                <select
+                                    value={snapshotSortKey}
+                                    onChange={(e) => setSnapshotSortKey(e.target.value as any)}
+                                    style={{minWidth: '100px', padding: '4px 8px', fontSize: '0.85em', background: 'var(--background-secondary)', border: '1px solid var(--background-modifier-border)', borderRadius: '4px'}}
+                                >
+                                    <option value="timestamp">Date</option>
+                                    <option value="wordCount">Words</option>
+                                    <option value="note">Note</option>
+                                </select>
+                                <button 
+                                    onClick={() => setSnapshotSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+                                    title={`Sort ${snapshotSortDirection === 'asc' ? 'Descending' : 'Ascending'}`}
+                                    style={{background: 'var(--background-secondary)', border: '1px solid var(--background-modifier-border)', borderRadius: '4px', padding: '4px', display: 'flex', alignItems: 'center'}}
+                                >
+                                    {snapshotSortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                                </button>
+                            </div>
 
-                        <div className="snapshot-list">
-                            {isSnapshotsLoading && <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 10}}>Loading history...</div>}
-                            {!isSnapshotsLoading && snapshots.length === 0 && (
-                                <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 20, fontStyle:'italic'}}>
-                                    No snapshots yet.
-                                </div>
-                            )}
-                            
-                            {snapshots.map(snap => (
-                                <div key={snap.timestamp} className="snapshot-item">
-                                    <div className="snapshot-header">
-                                        <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
-                                        <span className="snapshot-words">{snap.wordCount} words</span>
+                            <div className="snapshot-list">
+                                {isSnapshotsLoading && <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 10}}>Loading history...</div>}
+                                {!isSnapshotsLoading && filteredAndSortedSnapshots.length === 0 && (
+                                    <div style={{textAlign:'center', color: 'var(--text-muted)', marginTop: 20, fontStyle:'italic'}}>
+                                        {snapshotQuery ? 'No snapshots match your query.' : 'No snapshots yet.'}
                                     </div>
-                                    {snap.note && <div className="snapshot-note">{snap.note}</div>}
-                                    <div className="snapshot-actions">
-                                        <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
-                                        <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
-                                        <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
+                                )}
+                                
+                                {filteredAndSortedSnapshots.map(snap => (
+                                    <div key={snap.timestamp} className="snapshot-item">
+                                        <div className="snapshot-header">
+                                            <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
+                                            <span className="snapshot-words">{snap.wordCount} words</span>
+                                        </div>
+                                        {snap.note && <div className="snapshot-note">{snap.note}</div>}
+                                        <div className="snapshot-actions">
+                                            <button onClick={() => handleCompare(snap)} title="Compare"><FileDiff size={14}/></button>
+                                            <button onClick={() => handleRestore(snap)} disabled={isReadOnly} title="Restore"><RotateCcw size={14}/></button>
+                                            <button onClick={() => handleDeleteSnapshot(snap)} disabled={isReadOnly} title="Delete" className="danger"><Trash2 size={14}/></button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    </>
                 )}
             </div>
         </div>

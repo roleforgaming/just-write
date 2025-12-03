@@ -1788,7 +1788,8 @@ body {
 .novelist-snapshots-container {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex-grow: 1; /* Changed from height: 100% */
+    min-height: 0; /* Prevents flexbox overflow bugs */
 }
 
 .snapshot-create-section {
@@ -1797,6 +1798,7 @@ body {
     border-radius: 6px;
     margin-bottom: 15px;
     border: 1px solid var(--background-modifier-border);
+    flex-shrink: 0; /* Prevent this from shrinking */
 }
 
 .snapshot-create-section input {
@@ -2146,4 +2148,26 @@ body {
 /* Optional: Add visual cue to the header/time */
 .snapshot-item:hover .snapshot-time-container {
     cursor: help;
+}
+
+/* NEW: Inspector Snapshot Toolbar (Phase 5) */
+.novelist-snapshots-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.novelist-snapshots-toolbar .novelist-binder-filter {
+    flex-grow: 1;
+}
+
+.novelist-snapshots-toolbar select,
+.novelist-snapshots-toolbar button {
+    height: 30px; /* Standardize height */
+    padding: 4px;
+    font-size: 0.85em;
 }
