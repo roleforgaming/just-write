@@ -1,7 +1,7 @@
 import { App, TFile, TAbstractFile, normalizePath, Notice } from 'obsidian';
 import { Logger } from './logger';
-import { PruningSettings } from '../settings'; // Import
-import NovelistPlugin from '../main'; // Import for access to settings
+import { PruningSettings } from '../settings';
+import NovelistPlugin from '../main';
 
 export interface Snapshot {
     path: string;         // Full path to the snapshot file
@@ -15,17 +15,15 @@ export interface Snapshot {
 export class SnapshotManager {
     private app: App;
     private logger: Logger;
-    // We need access to plugin settings, pass plugin or settings in constructor
-    // For now, I will assume the caller passes settings or I get them from app if possible, 
-    // but cleaner to update constructor.
     private getSettings: () => { enabled: boolean, rules: PruningSettings };
     
     public static readonly SNAPSHOT_DIR = '.novelist/snapshots';
 
-    constructor(app: App, logger: Logger, settingsGetter?: () => { enabled: boolean, rules: PruningSettings }) {
+    constructor(app: App, plugin: NovelistPlugin, settingsGetter: () => { enabled: boolean, rules: PruningSettings }) {
         this.app = app;
-        this.logger = logger;
-        this.getSettings = settingsGetter || (() => ({ enabled: false, rules: { keepDaily: 7, keepWeekly: 4, keepMonthly: 12 } }));
+        // FIX 1: Use the logger from the plugin instance
+        this.logger = plugin.logger; 
+        this.getSettings = settingsGetter;
     }
 
     private getSnapshotDirForFile(file: TFile | string): string {
@@ -58,11 +56,11 @@ export class SnapshotManager {
                 timestamp,
                 note: safeNote,
                 snapshotWordCount: wordCount,
-                isPinned: false, // <--- DEFAULT TO FALSE
+                isPinned: false,
             };
             
             const snapshotContent = `---\n${JSON.stringify(frontmatter, null, 2)}\n---
-${fileContent}`; // Corrected: removed extra newlines, assuming content starts right after '---'
+${fileContent}`;
             
             const snapshotFilename = `${(window as any).moment(timestamp).format('YYYY-MM-DD-HHmmss')}.md`;
             const snapshotPath = normalizePath(`${snapshotDir}/${snapshotFilename}`);
@@ -70,7 +68,6 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
             await this.app.vault.adapter.write(snapshotPath, snapshotContent);
             this.logger.log(`Snapshot created at: ${snapshotPath}`);
             
-            // --- Pruning Trigger ---
             const settings = this.getSettings();
             if (settings.enabled) {
                 await this.pruneSnapshots(file, settings.rules);
@@ -99,7 +96,7 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
                 const noteMatch = content.match(/"note":\s*"(.*)"/);
                 const wordCountMatch = content.match(/"snapshotWordCount":\s*(\d+)/);
                 const origPathMatch = content.match(/"originalPath":\s*"(.*)"/);
-                const isPinnedMatch = content.match(/"isPinned":\s*(true|false)/); // <--- ADDED
+                const isPinnedMatch = content.match(/"isPinned":\s*(true|false)/);
 
                 if (timestampMatch) {
                     snapshots.push({
@@ -108,7 +105,7 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
                         timestamp: parseInt(timestampMatch[1]),
                         note: noteMatch ? noteMatch[1] : '', 
                         wordCount: wordCountMatch ? parseInt(wordCountMatch[1]) : 0,
-                        isPinned: isPinnedMatch ? (isPinnedMatch[1] === 'true') : false, // <--- ADDED
+                        isPinned: isPinnedMatch ? (isPinnedMatch[1] === 'true') : false,
                     });
                 }
             } catch (e) {
@@ -119,32 +116,30 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
         return snapshots.sort((a, b) => b.timestamp - a.timestamp);
     }
     
-    // <--- NEW METHOD TO UPDATE METADATA --->
     async updateSnapshotMetadata(snapshot: Snapshot, data: { isPinned?: boolean }) {
         this.logger.log(`Updating metadata for snapshot: ${snapshot.path}`);
         
         try {
             const rawContent = await this.app.vault.adapter.read(snapshot.path);
-            const parts = rawContent.split('\n---'); // Use split by '\n---' to separate frontmatter fence
+            const parts = rawContent.split('\n---');
             const fmBlock = parts[0].trim().replace(/^---/, '');
             const contentBody = parts.length > 1 ? parts.slice(1).join('\n---').trim() : '';
 
             let fm: any = {};
             try {
-                fm = JSON.parse(fmBlock); // Assuming JSON format from createSnapshot
+                // Attempt to parse existing frontmatter as JSON
+                fm = JSON.parse(fmBlock);
             } catch (e) {
-                // Fallback: Crude re-writing if JSON parsing fails due to manual edits
-                this.logger.error("Failed to parse snapshot frontmatter JSON, using object assignment.", e);
+                this.logger.error("Failed to parse snapshot frontmatter as JSON.", e);
+                // If parsing fails, create a base object to avoid crashing
+                fm = { originalPath: snapshot.originalPath, timestamp: snapshot.timestamp };
             }
 
-            // Update properties
             if (data.isPinned !== undefined) {
                 fm.isPinned = data.isPinned;
             }
 
-            // Reconstruct content
             const newFrontmatterBlock = `---\n${JSON.stringify(fm, null, 2)}\n---`;
-            // Re-join with a leading newline for standard Markdown structure if content exists
             const newContent = newFrontmatterBlock + (contentBody ? `\n\n${contentBody}` : ''); 
 
             await this.app.vault.adapter.write(snapshot.path, newContent);
@@ -155,7 +150,6 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
             throw e;
         }
     }
-    // <--- END NEW METHOD --->
 
     async restoreSnapshot(fileToRestore: TFile, snapshot: Snapshot): Promise<void> {
         this.logger.log(`Restoring snapshot ${snapshot.path} to ${fileToRestore.path}`);
@@ -193,18 +187,20 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
         }
     }
 
-    // --- Pruning Logic ---
-    async pruneSnapshots(file: TFile, rules: PruningSettings): Promise<void> {
+    async pruneSnapshots(file: TFile, rules: PruningSettings): Promise<number> {
         this.logger.log(`Pruning snapshots for ${file.basename}`);
-        const allSnapshots = await this.getSnapshots(file); // Already sorted desc (newest first)
+        const allSnapshots = await this.getSnapshots(file);
         
-        if (allSnapshots.length === 0) return;
+        if (allSnapshots.length === 0) {
+            this.logger.log("Pruning: No snapshots found to prune.");
+            return 0;
+        }
 
-        const unpinnedSnapshots = allSnapshots.filter(snap => !snap.isPinned); // <--- FILTER PINNED
+        const unpinnedSnapshots = allSnapshots.filter(snap => !snap.isPinned);
 
         if (unpinnedSnapshots.length === 0) {
             this.logger.log("Pruning: All snapshots are pinned, skipping pruning for this file.");
-            return;
+            return 0;
         }
 
         const moment = (window as any).moment;
@@ -213,22 +209,19 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
         const toDelete: Snapshot[] = [];
         const keptDaily = new Set<string>();
         const keptWeekly = new Set<string>();
-        const keptMonthly = new Set<string>();
+        // FIX 2: Remove unused variable
+        // const keptMonthly = new Set<string>();
 
-        // Time thresholds
         const dailyLimit = now.clone().subtract(rules.keepDaily, 'days');
         const weeklyLimit = now.clone().subtract(rules.keepWeekly, 'weeks');
         const monthlyLimit = now.clone().subtract(rules.keepMonthly, 'months');
 
-        for (const snap of unpinnedSnapshots) { // <--- ITERATE OVER UNPINNED ONLY
+        for (const snap of unpinnedSnapshots) {
             const snapTime = moment(snap.timestamp);
             
-            // 1. "Keep All" Window
             if (snapTime.isAfter(dailyLimit)) {
                 continue;
             }
-
-            // 2. "Keep Daily" Window 
             if (snapTime.isAfter(weeklyLimit)) {
                 const dayKey = snapTime.format('YYYY-MM-DD');
                 if (!keptDaily.has(dayKey)) {
@@ -238,8 +231,6 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
                 }
                 continue;
             }
-
-            // 3. "Keep Weekly" Window 
             if (snapTime.isAfter(monthlyLimit)) {
                 const weekKey = snapTime.format('YYYY-WW');
                 if (!keptWeekly.has(weekKey)) {
@@ -249,14 +240,18 @@ ${fileContent}`; // Corrected: removed extra newlines, assuming content starts r
                 }
                 continue;
             }
-
-            // 4. Older than monthly limit -> Delete
             toDelete.push(snap);
         }
 
-        this.logger.log(`Pruning: Deleting ${toDelete.length} old snapshots. Kept ${allSnapshots.length - unpinnedSnapshots.length} pinned snapshots.`); // <--- UPDATED LOG
-        for (const snap of toDelete) {
-            await this.deleteSnapshot(snap);
+        if (toDelete.length > 0) {
+            this.logger.log(`Pruning: Deleting ${toDelete.length} old snapshots. Kept ${allSnapshots.length - toDelete.length} snapshots.`);
+            for (const snap of toDelete) {
+                await this.deleteSnapshot(snap);
+            }
+        } else {
+            this.logger.log("Pruning: No snapshots met the criteria for deletion.");
         }
+        
+        return toDelete.length;
     }
 }

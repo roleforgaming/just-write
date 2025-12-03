@@ -15,15 +15,10 @@ interface InspectorProps {
 
 type Tab = 'synopsis' | 'notes' | 'metadata' | 'snapshots';
 
-// HELPER COMPONENT (CSS-based hover, structure remains the same)
+// HELPER COMPONENT
 const SnapshotTimeDisplay: React.FC<{ timestamp: number }> = ({ timestamp }) => {
-    // Use window.moment() for formatting
     const moment = (window as any).moment;
-    
-    // Relative time (e.g., 14 days ago)
     const relativeTime = moment(timestamp).fromNow();
-    
-    // Exact time (e.g., Tue Dec 03, 2025 @ 3:11 P.M.)
     const exactTime = moment(timestamp).format('ddd MMM DD, YYYY @ h:mm A');
 
     return (
@@ -52,13 +47,10 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
     const [snapshots, setSnapshots] = React.useState<Snapshot[]>([]);
     const [snapshotNote, setSnapshotNote] = React.useState('');
     const [isSnapshotsLoading, setIsSnapshotsLoading] = React.useState(false);
-    
-    // NEW Snapshot UI State
     const [snapshotQuery, setSnapshotQuery] = React.useState('');
     const [snapshotSortKey, setSnapshotSortKey] = React.useState<'timestamp' | 'wordCount' | 'note'>('timestamp');
     const [snapshotSortDirection, setSnapshotSortDirection] = React.useState<'desc' | 'asc'>('desc');
 
-    // Check Read-Only
     const pm = React.useMemo(() => new ProjectManager(app), [app]);
     const isReadOnly = pm.isInTrash(file);
 
@@ -66,7 +58,6 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         'synopsis', 'status', 'label', 'notes', 'rank', 'icon', 
         'accentColor', 'type', 'tags', 'position', 'description', 
         'created', 'modified', 'archived', 'author', 'deadline',
-        // Project metadata keys
         'templates', 'mappings', 'icons', 'iconColors', 'targetWordCount',
         'targetSessionCount', 'targetDeadline', 'writingHistory', 'wordCountFolders'
     ]), []);
@@ -91,31 +82,43 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         setCustomMeta(custom);
     }, [file, app.metadataCache, ignoredKeys]);
 
-    // Load Snapshots
     const loadSnapshots = React.useCallback(async () => {
-        if (activeTab === 'snapshots') {
-            setIsSnapshotsLoading(true);
-            const list = await plugin.snapshotManager.getSnapshots(file);
-            setSnapshots(list);
-            setIsSnapshotsLoading(false);
-        }
-    }, [file, plugin, activeTab]);
+        setIsSnapshotsLoading(true);
+        const list = await plugin.snapshotManager.getSnapshots(file);
+        setSnapshots(list);
+        setIsSnapshotsLoading(false);
+    }, [file, plugin]);
 
     React.useEffect(() => {
         refresh();
-        loadSnapshots();
+        if (activeTab === 'snapshots') {
+            loadSnapshots();
+        }
 
         const eventRef = app.metadataCache.on('changed', (f) => {
             if (f.path === file.path) refresh();
         });
         return () => { app.metadataCache.offref(eventRef); };
-    }, [file, refresh, loadSnapshots]);
+    }, [file, refresh, loadSnapshots, activeTab]);
 
-    // NEW: Memoized Filter and Sort Logic
+    React.useEffect(() => {
+        const handleRefresh = () => {
+            if (activeTab === 'snapshots') {
+                loadSnapshots();
+            }
+        };
+
+        // FIX: Cast app.workspace to `any` to allow custom event strings
+        (app.workspace as any).on('novelist-ui-refresh', handleRefresh);
+
+        return () => {
+            (app.workspace as any).off('novelist-ui-refresh', handleRefresh);
+        };
+    }, [app.workspace, loadSnapshots, activeTab]);
+
     const filteredAndSortedSnapshots = React.useMemo(() => {
         let list = snapshots;
         
-        // 1. Filter
         if (snapshotQuery) {
             const query = snapshotQuery.toLowerCase();
             list = list.filter(snap => 
@@ -124,32 +127,15 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
             );
         }
         
-        // 2. Sort
         return list.sort((a, b) => {
             const dir = snapshotSortDirection === 'asc' ? 1 : -1;
-            
             let aValue: any, bValue: any;
-
             switch (snapshotSortKey) {
-                case 'wordCount':
-                    aValue = a.wordCount;
-                    bValue = b.wordCount;
-                    break;
-                case 'note':
-                    aValue = (a.note || '').toLowerCase();
-                    bValue = (b.note || '').toLowerCase();
-                    break;
-                case 'timestamp':
-                default:
-                    aValue = a.timestamp;
-                    bValue = b.timestamp;
-                    break;
+                case 'wordCount': aValue = a.wordCount; bValue = b.wordCount; break;
+                case 'note': aValue = (a.note || '').toLowerCase(); bValue = (b.note || '').toLowerCase(); break;
+                default: aValue = a.timestamp; bValue = b.timestamp; break;
             }
-            
-            if (typeof aValue === 'string') {
-                return aValue.localeCompare(bValue) * dir;
-            }
-            
+            if (typeof aValue === 'string') return aValue.localeCompare(bValue) * dir;
             return (aValue - bValue) * dir;
         });
     }, [snapshots, snapshotQuery, snapshotSortKey, snapshotSortDirection]);
@@ -192,15 +178,12 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
 
     const handleCompare = async (snapshot: Snapshot) => {
         const currentContent = await app.vault.read(file);
-        
         try {
             const raw = await app.vault.adapter.read(snapshot.path);
             const parts = raw.split('\n---\n');
             const snapBody = parts.length > 1 ? parts.slice(1).join('\n---\n').trimStart() : raw;
-            
             const dateStr = (window as any).moment(snapshot.timestamp).format('MMM D, h:mm a');
             new SnapshotCompareModal(app, file, dateStr, currentContent, snapBody).open();
-            
         } catch (e) {
             new Notice("Failed to read snapshot content.");
             console.error("Error reading snapshot file:", e);
@@ -209,9 +192,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
 
     const handlePinSnapshot = async (snapshot: Snapshot, pin: boolean) => {
         if (isReadOnly) return;
-        
         setSnapshots(prev => prev.map(s => s.path === snapshot.path ? { ...s, isPinned: pin } : s));
-        
         setIsSnapshotsLoading(true);
         try {
             await plugin.snapshotManager.updateSnapshotMetadata(snapshot, { isPinned: pin });
@@ -228,15 +209,12 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
 
     const handleDeleteSnapshot = (snapshot: Snapshot) => {
         if (isReadOnly) return;
-        
         let message = "Permanently delete this version?";
         let warningText = 'Delete';
-
         if (snapshot.isPinned) {
             message = `Are you sure you want to permanently delete this PINNED snapshot? It was explicitly protected from auto-pruning.`;
             warningText = 'Permanently Delete Pinned';
         }
-
         new ConfirmModal(app, "Delete Snapshot", message, [ 
             { text: 'Cancel', action: () => {} },
             { 
@@ -387,7 +365,6 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                                     
                                     {snap.note && <div className="snapshot-note">{snap.note}</div>}
                                     
-                                    {/* FIX 1: Wrap Pin with span for Title attribute */}
                                     <div className="snapshot-status-indicators">
                                          {snap.isPinned && (
                                             <span title="Excluded from Pruning">

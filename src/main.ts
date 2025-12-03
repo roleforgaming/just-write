@@ -28,8 +28,8 @@ export default class NovelistPlugin extends Plugin {
         // Initialize Managers
         this.logger = new Logger(this);
         
-        // Pass settings getter to SnapshotManager for pruning
-        this.snapshotManager = new SnapshotManager(this.app, this.logger, () => ({
+        // FIX 1: Pass `this` (the plugin instance) instead of `this.logger`
+        this.snapshotManager = new SnapshotManager(this.app, this, () => ({
             enabled: this.settings.enablePruning,
             rules: this.settings.pruningSettings
         }));
@@ -100,6 +100,26 @@ export default class NovelistPlugin extends Plugin {
             id: 'open-novelist-statistics',
             name: 'Open Project Statistics',
             callback: () => this.activateStatistics(),
+        });
+
+        // Command to Prune Snapshots
+        this.addCommand({
+            id: 'novelist-prune-snapshots',
+            name: 'Prune snapshots for the current file',
+            checkCallback: (checking: boolean) => {
+                const file = this.app.workspace.getActiveFile();
+                // Ensure there is an active file and it's a markdown file
+                if (file && file instanceof TFile && file.extension === 'md') {
+                    if (!checking) {
+                        // If the command is actually executed, run the handler
+                        this.handlePruneCommand(file);
+                    }
+                    // This command should be available
+                    return true;
+                }
+                // This command should not be available
+                return false;
+            }
         });
 
         // --- 5. Context Menus ---
@@ -223,6 +243,35 @@ export default class NovelistPlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    async handlePruneCommand(file: TFile) {
+        // FIX 2: Use the correct settings properties
+        if (!this.settings.enablePruning) {
+            new Notice("Snapshot pruning is disabled in Novelist settings.");
+            return;
+        }
+
+        new Notice(`Novelist: Pruning snapshots for ${file.basename}...`);
+
+        try {
+            // FIX 2: Use the correct settings properties
+            const pruningRules = this.settings.pruningSettings;
+            const deletedCount = await this.snapshotManager.pruneSnapshots(file, pruningRules);
+            
+            if (deletedCount > 0) {
+                new Notice(`Pruning complete. Removed ${deletedCount} snapshot(s).`);
+            } else {
+                new Notice(`Pruning complete. No snapshots were removed.`);
+            }
+
+            // If the Inspector view is open, this will trigger it to refresh its snapshot list.
+            this.app.workspace.trigger('novelist-ui-refresh');
+
+        } catch (error) {
+            console.error("Novelist: Failed to run prune command:", error);
+            new Notice("Error occurred during snapshot pruning. See console for details.");
+        }
     }
 
     async onunload() {
