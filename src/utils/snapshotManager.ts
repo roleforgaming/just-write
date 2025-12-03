@@ -48,7 +48,11 @@ export class SnapshotManager {
             const fileContent = await this.app.vault.read(file);
             
             const timestamp = (window as any).moment().valueOf();
-            const wordCount = (fileContent.match(/\S+/g) || []).length;
+            
+            // FIX: Calculate word count only on the body of the note, excluding frontmatter.
+            const contentBody = fileContent.replace(/^---\n[\s\S]*?\n---\n/, '');
+            const wordCount = (contentBody.match(/\S+/g) || []).length;
+
             const safeNote = note ? note.replace(/"/g, '\\"') : '';
 
             const frontmatter = {
