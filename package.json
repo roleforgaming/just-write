@@ -3,8 +3,9 @@
   "version": "0.0.1",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "node esbuild.config.mjs",
-    "build": "node esbuild.config.mjs production"
+    "dev": "node esbuild.config.mjs && npm run deploy",
+    "build": "node esbuild.config.mjs production && npm run deploy",
+    "deploy": "copyfiles main.js styles.css manifest.json data.json \"D:/Vaults/Development Vaults/Scrivsidian/.obsidian/plugins/obsidian-novelist/\""
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.0",
@@ -29,6 +30,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "builtin-modules": "^5.0.0",
+    "copyfiles": "^2.4.1",
     "esbuild": "^0.27.0",
     "typescript": "^5.9.3"
   }
