@@ -102,6 +102,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
 
     const handleRestore = (snapshot: Snapshot) => {
         if (isReadOnly) return;
+        // FIX: Use window.moment()
         new ConfirmModal(app, "Restore Snapshot", 
             `Are you sure you want to restore the snapshot from ${window.moment(snapshot.timestamp).fromNow()}? Current content will be backed up automatically.`, 
             [
@@ -123,15 +124,14 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
     const handleCompare = async (snapshot: Snapshot) => {
         const currentContent = await app.vault.read(file);
         
-        // Fetch raw snapshot content including frontmatter to strip it manually or use manager
-        // Ideally manager exposes a helper, but for now we read manually
         const snapshotFile = app.vault.getAbstractFileByPath(snapshot.path);
         if (snapshotFile instanceof TFile) {
+            // Using adapter read is safer for hidden files, but TFile is available here
             const raw = await app.vault.read(snapshotFile);
-            // Quick strip based on known structure
             const parts = raw.split('\n---\n');
             const snapBody = parts.length > 1 ? parts.slice(1).join('\n---\n').trimStart() : raw;
             
+            // FIX: Use window.moment()
             const dateStr = window.moment(snapshot.timestamp).format('MMM D, h:mm a');
             new SnapshotCompareModal(app, file, dateStr, currentContent, snapBody).open();
         }
@@ -152,7 +152,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         ]).open();
     };
 
-    // Metadata Handlers (unchanged logic, condensed for brevity)
+    // Metadata Handlers
     const handleSave = async (key: string, value: any) => { if(!isReadOnly) app.fileManager.processFrontMatter(file, (fm: any) => { fm[key] = value; }); };
     const handleAddMetadata = async () => { if(!newMetaKey.trim() || isReadOnly) return; await app.fileManager.processFrontMatter(file, (fm: any) => { fm[newMetaKey.trim()] = newMetaValue; }); setNewMetaKey(''); setNewMetaValue(''); };
     const handleDeleteMetadata = async (key: string) => { if(!isReadOnly) await app.fileManager.processFrontMatter(file, (fm: any) => { delete fm[key]; }); };
@@ -254,6 +254,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                             {snapshots.map(snap => (
                                 <div key={snap.timestamp} className="snapshot-item">
                                     <div className="snapshot-header">
+                                        {/* FIX: Use window.moment() */}
                                         <span className="snapshot-time">{window.moment(snap.timestamp).fromNow()}</span>
                                         <span className="snapshot-words">{snap.wordCount} words</span>
                                     </div>

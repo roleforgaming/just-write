@@ -1,4 +1,4 @@
-import { App, TFile, TAbstractFile, normalizePath } from 'obsidian';
+import { App, TFile, TAbstractFile, normalizePath, Notice } from 'obsidian';
 import { Logger } from './logger';
 
 export interface Snapshot {
@@ -40,33 +40,39 @@ export class SnapshotManager {
             
             // 1. Ensure .novelist/snapshots exists
             if (!await this.app.vault.adapter.exists(SnapshotManager.SNAPSHOT_DIR)) {
-                await this.app.vault.createFolder(SnapshotManager.SNAPSHOT_DIR);
+                await this.app.vault.adapter.mkdir(SnapshotManager.SNAPSHOT_DIR);
             }
 
             // 2. Ensure specific file snapshot folder exists
             if (!await this.app.vault.adapter.exists(snapshotDir)) {
-                await this.app.vault.createFolder(snapshotDir);
+                await this.app.vault.adapter.mkdir(snapshotDir);
             }
 
             // 3. Read content and prepare metadata
             const fileContent = await this.app.vault.read(file);
+            
+            // FIX: Use window.moment()
             const timestamp = window.moment().valueOf();
             const wordCount = (fileContent.match(/\S+/g) || []).length;
             
+            // Note is escaped to handle quotes in JSON
+            const safeNote = note ? note.replace(/"/g, '\\"') : '';
+
             const frontmatter = {
                 originalPath: file.path,
                 timestamp,
-                note: note || '',
+                note: safeNote,
                 snapshotWordCount: wordCount,
             };
             
             // Wrap original content in a new snapshot wrapper
-            // We store metadata in the frontmatter of the snapshot file
             const snapshotContent = `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n\n${fileContent}`;
+            
+            // FIX: Use window.moment()
             const snapshotFilename = `${window.moment(timestamp).format('YYYY-MM-DD-HHmmss')}.md`;
             const snapshotPath = normalizePath(`${snapshotDir}/${snapshotFilename}`);
 
-            await this.app.vault.create(snapshotPath, snapshotContent);
+            await this.app.vault.adapter.write(snapshotPath, snapshotContent);
             this.logger.log(`Snapshot created at: ${snapshotPath}`);
 
         } catch (e) {
@@ -77,30 +83,46 @@ export class SnapshotManager {
 
     /**
      * Retrieves a list of snapshots for a specific file, sorted by newest first.
+     * Uses explicit adapter reads + Regex parsing because metadataCache excludes hidden folders.
      */
     async getSnapshots(file: TFile): Promise<Snapshot[]> {
         this.logger.log(`Fetching snapshots for: ${file.path}`);
         const snapshotDir = this.getSnapshotDirForFile(file);
 
-        if (!await this.app.vault.adapter.exists(snapshotDir)) {
+        // Use ADAPTER to list files in hidden folder
+        const exists = await this.app.vault.adapter.exists(snapshotDir);
+        if (!exists) {
+            this.logger.log(`No snapshot directory found at ${snapshotDir}`);
             return [];
         }
 
-        const listResult = await this.app.vault.adapter.list(snapshotDir);
-        const snapshotFiles = listResult.files.filter(p => p.endsWith('.md'));
-
+        const result = await this.app.vault.adapter.list(snapshotDir);
         const snapshots: Snapshot[] = [];
 
-        for (const path of snapshotFiles) {
-            const cache = this.app.metadataCache.getCache(path);
-            if (cache?.frontmatter) {
-                snapshots.push({
-                    path: path,
-                    originalPath: cache.frontmatter.originalPath,
-                    timestamp: cache.frontmatter.timestamp,
-                    note: cache.frontmatter.note,
-                    wordCount: cache.frontmatter.snapshotWordCount,
-                });
+        for (const path of result.files) {
+            if (!path.endsWith('.md')) continue;
+
+            try {
+                // Read raw content directly from adapter
+                const content = await this.app.vault.adapter.read(path);
+                
+                // Manual extraction of frontmatter properties
+                const timestampMatch = content.match(/"timestamp":\s*(\d+)/);
+                const noteMatch = content.match(/"note":\s*"(.*)"/);
+                const wordCountMatch = content.match(/"snapshotWordCount":\s*(\d+)/);
+                const origPathMatch = content.match(/"originalPath":\s*"(.*)"/);
+
+                if (timestampMatch) {
+                    snapshots.push({
+                        path: path,
+                        originalPath: origPathMatch ? origPathMatch[1] : file.path,
+                        timestamp: parseInt(timestampMatch[1]),
+                        note: noteMatch ? noteMatch[1] : '', 
+                        wordCount: wordCountMatch ? parseInt(wordCountMatch[1]) : 0
+                    });
+                }
+            } catch (e) {
+                this.logger.error("Failed to read snapshot file", path, e);
             }
         }
 
@@ -114,53 +136,32 @@ export class SnapshotManager {
     async restoreSnapshot(fileToRestore: TFile, snapshot: Snapshot): Promise<void> {
         this.logger.log(`Restoring snapshot ${snapshot.path} to ${fileToRestore.path}`);
 
-        // 1. Safety: Backup current state
-        await this.createSnapshot(fileToRestore, 'Pre-Restore Auto-Backup');
+        try {
+            // 1. Safety: Backup current state
+            await this.createSnapshot(fileToRestore, 'Pre-Restore Auto-Backup');
 
-        // 2. Read snapshot content
-        const snapshotFile = this.app.vault.getAbstractFileByPath(snapshot.path);
-        if (!(snapshotFile instanceof TFile)) {
-            throw new Error(`Snapshot file not found: ${snapshot.path}`);
+            // 2. Read Snapshot via adapter
+            const snapContent = await this.app.vault.adapter.read(snapshot.path);
+            
+            // 3. Strip Snapshot Frontmatter
+            const contentToRestore = snapContent.replace(/^---\n[\s\S]*?\n---\n\n?/, '');
+
+            // 4. Modify original file
+            await this.app.vault.modify(fileToRestore, contentToRestore);
+            this.logger.log(`Restoration complete.`);
+        } catch (e) {
+            this.logger.error("Failed to restore snapshot", e);
+            new Notice("Failed to restore snapshot. Check console for details.");
         }
-
-        const rawSnapshotContent = await this.app.vault.read(snapshotFile);
-        
-        // 3. Strip the snapshot-specific frontmatter to get original content
-        // The snapshot format is: --- {json} --- \n\n {original_content}
-        const contentStart = rawSnapshotContent.indexOf('\n---\n');
-        let contentToRestore = "";
-
-        if (contentStart !== -1) {
-            // +5 for '\n---\n' length
-            contentToRestore = rawSnapshotContent.substring(contentStart + 5).trimStart(); 
-            // We trim start to remove the newline after the closing fence
-        } else {
-            // Fallback: rely on Obsidian cache to find end of frontmatter
-            const cache = this.app.metadataCache.getFileCache(snapshotFile);
-            if (cache && cache.frontmatterPosition) {
-                contentToRestore = rawSnapshotContent.substring(cache.frontmatterPosition.end.offset).trimStart();
-            } else {
-                contentToRestore = rawSnapshotContent; // Should not happen if created by us
-            }
-        }
-
-        // 4. Overwrite file
-        await this.app.vault.modify(fileToRestore, contentToRestore);
-        this.logger.log(`Restoration complete.`);
     }
 
     async deleteSnapshot(snapshot: Snapshot): Promise<void> {
-        const file = this.app.vault.getAbstractFileByPath(snapshot.path);
-        if (file) {
-            await this.app.vault.delete(file);
+        if (await this.app.vault.adapter.exists(snapshot.path)) {
+            await this.app.vault.adapter.remove(snapshot.path);
             this.logger.log(`Deleted snapshot: ${snapshot.path}`);
         }
     }
 
-    /**
-     * Handles renaming of source files by renaming their snapshot directory
-     * to maintain history linkage.
-     */
     async handleFileRename(file: TAbstractFile, oldPath: string): Promise<void> {
         if (!(file instanceof TFile)) return;
 
@@ -170,10 +171,9 @@ export class SnapshotManager {
         if (await this.app.vault.adapter.exists(oldSnapshotDir)) {
             this.logger.log(`Renaming snapshot history from ${oldSnapshotDir} to ${newSnapshotDir}`);
             
-            // Ensure parent of new dir exists
             const newParent = newSnapshotDir.substring(0, newSnapshotDir.lastIndexOf('/'));
             if (!await this.app.vault.adapter.exists(newParent)) {
-                await this.app.vault.createFolder(newParent);
+                await this.app.vault.adapter.mkdir(newParent);
             }
 
             await this.app.vault.adapter.rename(oldSnapshotDir, newSnapshotDir);
