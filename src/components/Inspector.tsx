@@ -1,3 +1,5 @@
+// src/components/Inspector.tsx
+
 import * as React from 'react';
 import { App, TFile, Notice } from 'obsidian';
 import { ProjectManager } from '../utils/projectManager';
@@ -15,7 +17,28 @@ interface InspectorProps {
 
 type Tab = 'synopsis' | 'notes' | 'metadata' | 'snapshots';
 
+// UPDATED HELPER COMPONENT (CSS-based hover)
+const SnapshotTimeDisplay: React.FC<{ timestamp: number }> = ({ timestamp }) => {
+    // Use window.moment() for formatting
+    const moment = (window as any).moment;
+    
+    // Relative time (e.g., 5 days ago)
+    const relativeTime = moment(timestamp).fromNow();
+    
+    // Exact time (e.g., Tue Dec 03, 2025 @ 3:11 P.M.)
+    const exactTime = moment(timestamp).format('ddd MMM DD, YYYY @ h:mm A');
+
+    return (
+        <span className="snapshot-time-container" title={exactTime}>
+            <span className="time-relative">{relativeTime}</span>
+            <span className="time-exact">{exactTime}</span>
+        </span>
+    );
+};
+// END UPDATED HELPER COMPONENT
+
 export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
+    // ... (Rest of the Inspector component code remains exactly the same as before)
     const [activeTab, setActiveTab] = React.useState<Tab>('synopsis');
     
     // Document State
@@ -102,9 +125,8 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
 
     const handleRestore = (snapshot: Snapshot) => {
         if (isReadOnly) return;
-        // FIX: Use window.moment()
         new ConfirmModal(app, "Restore Snapshot", 
-            `Are you sure you want to restore the snapshot from ${window.moment(snapshot.timestamp).fromNow()}? Current content will be backed up automatically.`, 
+            `Are you sure you want to restore the snapshot from ${(window as any).moment(snapshot.timestamp).fromNow()}? Current content will be backed up automatically.`, 
             [
                 { text: 'Cancel', action: () => {} },
                 { 
@@ -125,14 +147,12 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
         const currentContent = await app.vault.read(file);
         
         try {
-            // FIX: Use adapter.read to reliably get content from hidden snapshot folder
             const raw = await app.vault.adapter.read(snapshot.path);
             
-            // Extract the body (strip the custom frontmatter added by SnapshotManager)
+            // Extract the body
             const parts = raw.split('\n---\n');
             const snapBody = parts.length > 1 ? parts.slice(1).join('\n---\n').trimStart() : raw;
             
-            // FIX: Use window.moment()
             const dateStr = (window as any).moment(snapshot.timestamp).format('MMM D, h:mm a');
             new SnapshotCompareModal(app, file, dateStr, currentContent, snapBody).open();
             
@@ -259,8 +279,7 @@ export const Inspector: React.FC<InspectorProps> = ({ app, plugin, file }) => {
                             {snapshots.map(snap => (
                                 <div key={snap.timestamp} className="snapshot-item">
                                     <div className="snapshot-header">
-                                        {/* FIX: Use window.moment() */}
-                                        <span className="snapshot-time">{window.moment(snap.timestamp).fromNow()}</span>
+                                        <SnapshotTimeDisplay timestamp={snap.timestamp} /> 
                                         <span className="snapshot-words">{snap.wordCount} words</span>
                                     </div>
                                     {snap.note && <div className="snapshot-note">{snap.note}</div>}

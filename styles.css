@@ -2108,3 +2108,21 @@ body {
     text-align: right;
     background: var(--background-secondary);
 }
+
+/* Snapshot Time Hover Effect */
+.snapshot-time-container {
+    cursor: help; /* Visual cue */
+}
+
+.snapshot-time-container .time-exact {
+    display: none;
+    color: var(--interactive-accent); /* Optional: Highlight exact time */
+}
+
+.snapshot-time-container:hover .time-relative {
+    display: none;
+}
+
+.snapshot-time-container:hover .time-exact {
+    display: inline;
+}
