@@ -2,9 +2,18 @@ import { App, Workspace, TFile, Plugin, MarkdownView } from 'obsidian';
 import { NovelistSettings } from '../../settings';
 import { SnapshotManager } from '../../utils/snapshotManager';
 import { Logger } from '../../utils/logger';
+import NovelistPlugin from '../../main';
+
+// Helper function: Standardizes date to YYYY-MM-DD format
+const getLocalDateString = (date: Date = new Date()): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 export class AutoSnapshotManager {
-    private plugin: Plugin;
+    private plugin: NovelistPlugin;
     private app: App;
     private workspace: Workspace;
     private snapshotManager: SnapshotManager;
@@ -12,9 +21,8 @@ export class AutoSnapshotManager {
     private logger: Logger;
     
     private dailyInterval: number | null = null;
-    private lastDailyCheck: string = '';
 
-    constructor(plugin: Plugin, snapshotManager: SnapshotManager, settings: NovelistSettings, logger: Logger) {
+    constructor(plugin: NovelistPlugin, snapshotManager: SnapshotManager, settings: NovelistSettings, logger: Logger) {
         this.plugin = plugin;
         this.app = plugin.app;
         this.workspace = plugin.app.workspace;
@@ -38,9 +46,7 @@ export class AutoSnapshotManager {
     }
 
     unload() {
-        if (this.dailyInterval) {
-            window.clearInterval(this.dailyInterval);
-        }
+        this.stopDailyTimer();
         
         // 3. Session End Snapshot
         if (this.settings.autoSnapshotOnSessionEnd) {
@@ -67,7 +73,6 @@ export class AutoSnapshotManager {
     }
 
     private async handleSessionEnd() {
-        // Note: Async operations in onunload are not guaranteed to complete before app close.
         this.logger.log("AutoSnapshot: Session End triggered.");
         const leaves = this.workspace.getLeavesOfType('markdown');
         const filesToSnapshot = new Set<TFile>();
@@ -85,35 +90,73 @@ export class AutoSnapshotManager {
         await Promise.allSettled(promises);
     }
 
-    private startDailyTimer() {
-        // Check every minute
-        this.dailyInterval = window.setInterval(() => {
+    public startDailyTimer() {
+        if (this.dailyInterval) {
+            // Stop existing timer just in case, for safe restart
+            this.stopDailyTimer();
+        }
+        
+        if (this.settings.enableDailyAutoSnapshot) {
+            this.logger.log("AutoSnapshot: Daily Timer Started");
+            // Check immediately in case we missed it while closed
             this.checkDailySnapshot();
-        }, 60 * 1000); 
+
+            // Check every minute
+            this.dailyInterval = window.setInterval(() => {
+                this.checkDailySnapshot();
+            }, 60 * 1000); 
+        }
+    }
+
+    public stopDailyTimer() {
+        if (this.dailyInterval) {
+            window.clearInterval(this.dailyInterval);
+            this.dailyInterval = null;
+            this.logger.log("AutoSnapshot: Daily Timer Stopped");
+        }
     }
 
     private async checkDailySnapshot() {
         if (!this.settings.enableDailyAutoSnapshot) return;
 
         const now = new Date();
-        const currentHours = String(now.getHours()).padStart(2, '0');
-        const currentMinutes = String(now.getMinutes()).padStart(2, '0');
-        const currentTime = `${currentHours}:${currentMinutes}`;
-        const todayStr = now.toDateString();
-
-        // If time matches settings AND we haven't done it today (in this runtime session)
-        // Note: A more robust "Done Today" check would involve persistent state, 
-        // but for a plugin, simple session memory + time exact match often suffices for MVP.
-        // Better: Check if the target time has passed and we haven't run it.
+        const targetTimeParts = this.settings.dailyAutoSnapshotTime.split(':');
         
-        if (currentTime === this.settings.dailyAutoSnapshotTime && this.lastDailyCheck !== todayStr) {
-            this.lastDailyCheck = todayStr;
+        if (targetTimeParts.length !== 2) {
+             return;
+        }
+
+        const targetHour = parseInt(targetTimeParts[0], 10);
+        const targetMinute = parseInt(targetTimeParts[1], 10);
+        
+        if (isNaN(targetHour) || isNaN(targetMinute)) return;
+
+        // FIX: Use YYYY-MM-DD for reliable persistent storage and comparison
+        const todayStr = getLocalDateString(now);
+        
+        if (this.settings.lastDailySnapshotDate === todayStr) {
+            return;
+        }
+        
+        // Robust check: Is the current time PAST or EQUAL to the target time?
+        const nowHour = now.getHours();
+        const nowMinute = now.getMinutes();
+
+        const isTargetHourPassed = nowHour > targetHour;
+        const isTargetMinutePassed = nowHour === targetHour && nowMinute >= targetMinute;
+
+        const hasTimePassed = isTargetHourPassed || isTargetMinutePassed;
+        
+        if (hasTimePassed) {
             this.logger.log("AutoSnapshot: Daily triggered.");
+            
+            // Mark as run for today immediately and persist
+            this.settings.lastDailySnapshotDate = todayStr;
+            await this.plugin.saveSettings();
             
             // Snapshot ALL markdown files
             const files = this.app.vault.getMarkdownFiles();
             for (const file of files) {
-                // Avoid spamming main thread, do in chunks or sequential
                 await this.snapshotManager.createSnapshot(file, 'Auto-snapshot: Daily');
             }
         }

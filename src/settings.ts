@@ -19,16 +19,16 @@ export interface FolderMapping {
 }
 
 export interface PruningSettings {
-    keepDaily: number;   // Days to keep all snapshots
-    keepWeekly: number;  // Weeks to keep one snapshot per day
-    keepMonthly: number; // Months to keep one snapshot per week
+    keepDaily: number;
+    keepWeekly: number;
+    keepMonthly: number;
 }
 
 export interface NovelistSettings {
     // 1. General & Startup
     startupBehavior: 'none' | 'dashboard' | 'binder' | 'both';
 
-    // 2. Project Templates (Global)
+    // 2. Project Templates
     projectTemplates: ProjectTemplate[];
 
     // 3. Binder
@@ -66,17 +66,18 @@ export interface NovelistSettings {
     advancedSearchDelay: number;
     advancedReorderCommand: string;
     
-    // 9. Writing Targets (Global)
+    // 9. Writing Targets
     globalDailyTarget: number;
     
     // 10. Statistics
     statsSubtractOnDelete: boolean;
 
-    // 11. Snapshots (Phase 2)
+    // 11. Snapshots
     autoSnapshotOnSessionStart: boolean;
     autoSnapshotOnSessionEnd: boolean;
     enableDailyAutoSnapshot: boolean;
     dailyAutoSnapshotTime: string; // HH:mm
+    lastDailySnapshotDate: string; // YYYY-MM-DD (Persisted state)
     enablePruning: boolean;
     pruningSettings: PruningSettings;
 }
@@ -123,6 +124,7 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
     autoSnapshotOnSessionEnd: false,
     enableDailyAutoSnapshot: false,
     dailyAutoSnapshotTime: "12:00",
+    lastDailySnapshotDate: "", // Default empty
     enablePruning: false,
     pruningSettings: {
         keepDaily: 7,
@@ -130,8 +132,6 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
         keepMonthly: 12,
     },
 };
-
-// --- Settings Tab ---
 
 export class NovelistSettingTab extends PluginSettingTab {
     plugin: NovelistPlugin;
@@ -179,7 +179,7 @@ export class NovelistSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Auto-snapshot on Session End')
-            .setDesc('Create a snapshot of all open files when the plugin unloads (e.g. closing Obsidian). Note: This is best-effort and may not catch sudden crashes.')
+            .setDesc('Create a snapshot of all open files when the plugin unloads.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoSnapshotOnSessionEnd)
                 .onChange(async (value) => {
@@ -195,6 +195,12 @@ export class NovelistSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.enableDailyAutoSnapshot = value;
                     await this.plugin.saveSettings();
+                    // FIX: Immediately update timer state in manager
+                    if (value) {
+                        this.plugin.autoSnapshotManager.startDailyTimer();
+                    } else {
+                        this.plugin.autoSnapshotManager.stopDailyTimer();
+                    }
                 }));
 
         new Setting(containerEl)
@@ -261,7 +267,8 @@ export class NovelistSettingTab extends PluginSettingTab {
     }
 
     renderProjectTemplates(containerEl: HTMLElement) {
-        // ... [Keep Existing Implementation] ...
+        // (Implementation remains unchanged)
+        // ...
         containerEl.createEl('h2', { text: 'Project Templates' });
         
         this.plugin.settings.projectTemplates.forEach((template, index) => {
