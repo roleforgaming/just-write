@@ -324,16 +324,27 @@ notes: ""
     async getProjectWordCount(folder: TFolder): Promise<number> {
         let count = 0;
         
-        // Determine target folder name from settings or default
-        const targetFolderName = this.plugin?.settings.dashboardWordCountFolder || 'Manuscript';
+        // 1. Get Project Settings
+        const meta = this.getProjectMetadata(folder);
         
+        // 2. Determine Target Folders
+        // If explicit folders are set in metadata, use those.
+        // Otherwise, fallback to global setting or default 'Manuscript'
+        let targetPaths: string[] = [];
+
+        if (meta && meta.wordCountFolders && meta.wordCountFolders.length > 0) {
+            targetPaths = meta.wordCountFolders.map((p: string) => normalizePath(`${folder.path}/${p}`));
+        } else {
+            const defaultName = this.plugin?.settings.dashboardWordCountFolder || 'Manuscript';
+            targetPaths = [normalizePath(`${folder.path}/${defaultName}`)];
+        }
+        
+        // Helper to recursively count words
         const countWords = async (file: TAbstractFile) => {
             if (file instanceof TFile && file.extension === 'md') {
-                // Check if file is in trash
                 if (this.isInTrash(file)) return;
                 
                 const content = await this.app.vault.cachedRead(file);
-                // Basic word count: strip frontmatter then count words
                 const contentBody = content.replace(/^---\n[\s\S]*?\n---\n/, '');
                 const words = contentBody.match(/\S+/g);
                 if (words) count += words.length;
@@ -344,11 +355,14 @@ notes: ""
             }
         };
 
-        // Try to find the specific manuscript folder first
-        const manuscript = folder.children.find(c => c.name === targetFolderName && c instanceof TFolder);
-        const target = manuscript instanceof TFolder ? manuscript : folder;
+        // Iterate through defined paths
+        for (const path of targetPaths) {
+            const target = this.app.vault.getAbstractFileByPath(path);
+            if (target) {
+                await countWords(target);
+            }
+        }
         
-        await countWords(target);
         return count;
     }
 
@@ -376,7 +390,8 @@ notes: ""
             targetWordCount: fm.targetWordCount || 0,
             targetSessionCount: fm.targetSessionCount || 0,
             targetDeadline: fm.targetDeadline || '',
-            writingHistory: fm.writingHistory || {}
+            writingHistory: fm.writingHistory || {},
+            wordCountFolders: fm.wordCountFolders || []
         };
     }
 
@@ -392,7 +407,8 @@ notes: ""
         targetWordCount?: number,
         targetSessionCount?: number,
         targetDeadline?: string,
-        writingHistory?: Record<string, number>
+        writingHistory?: Record<string, number>,
+        wordCountFolders?: string[]
     }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -410,6 +426,7 @@ notes: ""
             if (data.targetSessionCount !== undefined) fm.targetSessionCount = data.targetSessionCount;
             if (data.targetDeadline !== undefined) fm.targetDeadline = data.targetDeadline;
             if (data.writingHistory !== undefined) fm.writingHistory = data.writingHistory;
+            if (data.wordCountFolders !== undefined) fm.wordCountFolders = data.wordCountFolders;
         });
     }
 

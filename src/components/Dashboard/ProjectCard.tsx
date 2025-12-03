@@ -1,6 +1,6 @@
 import React from 'react';
 import { App, TFolder, Menu } from 'obsidian';
-import { FolderOpen, MoreVertical, Tag, ChevronDown, Target } from 'lucide-react';
+import { FolderOpen, MoreVertical, Tag, ChevronDown, Target, Clock } from 'lucide-react';
 import { ProjectManager } from '../../utils/projectManager';
 import { ConfirmModal } from '../../modals/ConfirmModal';
 import { ProjectSettingsModal } from '../../modals/ProjectSettingsModal';
@@ -9,14 +9,18 @@ interface ProjectCardProps {
     app: App;
     folder: TFolder;
     meta: any; 
-    wordCount?: number; // Added prop
+    wordCount?: number;
+    todayCount?: number;
 }
 
-export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta, wordCount = 0 }) => {
+export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta, wordCount = 0, todayCount = 0 }) => {
     const pm = new ProjectManager(app);
 
     const handleOpen = (e: React.MouseEvent) => {
-        e.stopPropagation();
+        // This function can be called by multiple elements, so stop propagation if it's not the base card
+        if ((e.target as HTMLElement).closest('button, .clickable')) {
+            e.stopPropagation();
+        }
         const marker = folder.children.find(c => c.name === 'project.md');
         if (marker) app.workspace.getLeaf(false).openFile(marker as any);
     };
@@ -102,8 +106,15 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta, wor
     const target = meta.targetWordCount || 0;
     const percent = target > 0 ? Math.min(100, Math.round((wordCount / target) * 100)) : 0;
 
+    // Session Progress Logic
+    const sessionTarget = meta.targetSessionCount || 0;
+    const sessionPercent = sessionTarget > 0 ? Math.min(100, Math.round((todayCount / sessionTarget) * 100)) : 0;
+
     return (
-        <div className={`novelist-project-card ${meta.isArchived ? 'is-archived' : ''}`}>
+        <div 
+            className={`novelist-project-card ${meta.isArchived ? 'is-archived' : ''}`}
+            onClick={handleOpen}
+        >
             
             {/* Top Bar */}
             <div className="novelist-card-top">
@@ -136,18 +147,37 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ app, folder, meta, wor
             </div>
 
             {/* Progress Bar Section */}
-            {target > 0 && (
-                <div className="novelist-card-progress-section" title={`${wordCount.toLocaleString()} / ${target.toLocaleString()} words`}>
-                    <div className="novelist-progress-labels">
-                        <span className="progress-icon"><Target size={10}/> {percent}%</span>
-                        <span className="progress-count">{wordCount.toLocaleString()} words</span>
-                    </div>
-                    <div className="novelist-progress-bar-bg">
-                        <div 
-                            className="novelist-progress-bar-fill" 
-                            style={{ width: `${percent}%` }}
-                        ></div>
-                    </div>
+            {(target > 0 || sessionTarget > 0) && (
+                 <div className="novelist-card-progress-section">
+                    {target > 0 && (
+                        <div className="novelist-manuscript-progress" title={`Total: ${wordCount.toLocaleString()} / ${target.toLocaleString()} words`}>
+                            <div className="novelist-progress-labels">
+                                <span className="progress-icon"><Target size={10}/> {percent}%</span>
+                                <span className="progress-count">{wordCount.toLocaleString()} words</span>
+                            </div>
+                            <div className="novelist-progress-bar-bg">
+                                <div 
+                                    className="novelist-progress-bar-fill" 
+                                    style={{ width: `${percent}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {sessionTarget > 0 && (
+                        <div className="novelist-session-progress" title={`Session: ${todayCount.toLocaleString()} / ${sessionTarget.toLocaleString()} words`}>
+                            <div className="novelist-progress-labels small">
+                                <span className="progress-icon"><Clock size={10}/> Session</span>
+                                <span className="progress-count">{todayCount.toLocaleString()} / {sessionTarget.toLocaleString()}</span>
+                            </div>
+                            <div className="novelist-progress-bar-bg small">
+                                <div 
+                                    className="novelist-progress-bar-fill session" 
+                                    style={{ width: `${sessionPercent}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

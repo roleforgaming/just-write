@@ -13,6 +13,7 @@ export interface NovelistMetadata {
     targetSessionCount?: number;
     targetDeadline?: string;
     writingHistory?: Record<string, number>;
+    wordCountFolders?: string[];
 }
 
 export function getMetadata(app: App, file: TFile): NovelistMetadata {

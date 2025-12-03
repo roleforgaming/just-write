@@ -49,6 +49,7 @@ export class ProjectSettingsModal extends Modal {
     targetWordCount: number = 0;
     targetSessionCount: number = 0;
     targetDeadline: string = '';
+    wordCountFolders: string[] = [];
     
     constructor(app: App, project: TFolder) {
         super(app);
@@ -66,6 +67,7 @@ export class ProjectSettingsModal extends Modal {
         this.targetWordCount = meta?.targetWordCount || 0;
         this.targetSessionCount = meta?.targetSessionCount || 0;
         this.targetDeadline = meta?.targetDeadline || '';
+        this.wordCountFolders = meta?.wordCountFolders || [];
     }
 
     onOpen() {
@@ -151,7 +153,69 @@ export class ProjectSettingsModal extends Modal {
                 text.onChange(val => this.targetDeadline = val);
             });
 
-        // --- SECTION 3: DOCUMENT TEMPLATES ---
+        // --- SECTION 3: WORD COUNT SETTINGS ---
+        contentEl.createEl('h3', { text: 'Word Count Sources' });
+        contentEl.createEl('p', { text: 'Specify which folders are included in the total manuscript word count.', cls: 'setting-item-description' });
+
+        const sourceFoldersDiv = contentEl.createDiv();
+        
+        const availableFolders = this.getAllProjectFolders(this.project);
+        
+        // List existing folders
+        this.wordCountFolders.forEach((folderPath, index) => {
+            const div = sourceFoldersDiv.createDiv({ cls: 'novelist-setting-item-box' });
+            div.style.display = 'flex';
+            div.style.alignItems = 'center';
+            div.style.justifyContent = 'space-between';
+            div.style.gap = '10px';
+            div.style.marginBottom = '5px';
+            div.style.padding = '6px';
+            
+            const span = div.createSpan({ text: folderPath });
+            span.style.flexGrow = '1';
+            
+            const delBtn = div.createEl('button', { text: 'Remove' });
+            delBtn.onclick = () => {
+                this.wordCountFolders.splice(index, 1);
+                this.render();
+            };
+        });
+
+        if (this.wordCountFolders.length === 0) {
+            sourceFoldersDiv.createEl('div', { 
+                text: 'No specific folders selected. Defaulting to "Manuscript".', 
+                cls: 'setting-item-description',
+                attr: { style: 'color: var(--text-muted); font-style: italic; margin-bottom: 10px;' } 
+            });
+        }
+
+        // Add new folder
+        const addFolderDiv = sourceFoldersDiv.createDiv();
+        addFolderDiv.style.display = 'flex';
+        addFolderDiv.style.gap = '10px';
+        addFolderDiv.style.marginTop = '10px';
+
+        const folderSelect = addFolderDiv.createEl('select');
+        folderSelect.style.flexGrow = '1';
+        folderSelect.createEl('option', { text: 'Select Folder to Track...', value: '' });
+        
+        availableFolders.forEach(folder => {
+            const relativePath = folder.path.replace(this.project.path + '/', '');
+            // Don't show if already added
+            if (!this.wordCountFolders.includes(relativePath)) {
+                folderSelect.createEl('option', { text: relativePath, value: relativePath });
+            }
+        });
+        
+        const addBtn = addFolderDiv.createEl('button', { text: 'Add Folder' });
+        addBtn.onclick = () => {
+            if (folderSelect.value) {
+                this.wordCountFolders.push(folderSelect.value);
+                this.render();
+            }
+        };
+
+        // --- SECTION 4: DOCUMENT TEMPLATES ---
         contentEl.createEl('h3', { text: 'Document Templates' });
         contentEl.createEl('p', { text: 'Define templates that point to markdown files in your vault.', cls: 'setting-item-description' });
 
@@ -191,14 +255,12 @@ export class ProjectSettingsModal extends Modal {
                     this.render();
                 }));
 
-        // --- SECTION 4: FOLDER MAPPINGS ---
+        // --- SECTION 5: FOLDER MAPPINGS ---
         contentEl.createEl('h3', { text: 'Folder Mappings' });
         contentEl.createEl('p', { text: 'Automatically use a template when creating files in specific folders.', cls: 'setting-item-description' });
 
         const mappingsDiv = contentEl.createDiv();
         
-        const availableFolders = this.getAllProjectFolders(this.project);
-
         this.mappings.forEach((mapping, index) => {
             const div = mappingsDiv.createDiv({ cls: 'novelist-setting-item-box' });
             div.style.display = 'flex';
@@ -283,7 +345,8 @@ export class ProjectSettingsModal extends Modal {
                         // Save targets
                         targetWordCount: this.targetWordCount,
                         targetSessionCount: this.targetSessionCount,
-                        targetDeadline: this.targetDeadline
+                        targetDeadline: this.targetDeadline,
+                        wordCountFolders: this.wordCountFolders
                     });
 
                     if (this.newName !== this.project.name) {

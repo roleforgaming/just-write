@@ -25,6 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
         direction: 'desc' 
     });
     const [wordCounts, setWordCounts] = useState<Record<string, number>>({});
+    const [todayCounts, setTodayCounts] = useState<Record<string, number>>({});
 
     // Use memo to ensure ProjectManager uses latest plugin instance
     const pm = useMemo(() => new ProjectManager(app, plugin), [app, plugin]);
@@ -38,11 +39,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
         setProjects(data);
 
         const counts: Record<string, number> = {};
+        const tCounts: Record<string, number> = {};
+        const todayStr = new Date().toISOString().split('T')[0];
+
         for (const p of data) {
             const count = await pm.getProjectWordCount(p.folder);
             counts[p.folder.path] = count;
+            tCounts[p.folder.path] = Number(p.meta.writingHistory?.[todayStr] || 0);
         }
         setWordCounts(counts);
+        setTodayCounts(tCounts);
     };
 
     useEffect(() => {
@@ -167,7 +173,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
                                 app={app} 
                                 folder={p.folder} 
                                 meta={p.meta} 
-                                wordCount={wordCounts[p.folder.path] || 0} // Pass word count
+                                wordCount={wordCounts[p.folder.path] || 0}
+                                todayCount={todayCounts[p.folder.path] || 0}
                             />
                         ))}
                         {processedProjects.length === 0 && (
@@ -211,6 +218,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ app, plugin }) => {
                                         folder={p.folder} 
                                         meta={p.meta}
                                         wordCount={wordCounts[p.folder.path] || 0}
+                                        todayCount={todayCounts[p.folder.path] || 0}
                                     />
                                 ))
                             ) : (

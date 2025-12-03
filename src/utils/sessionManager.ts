@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, debounce } from 'obsidian';
+import { App, TFile, TFolder, debounce, Notice } from 'obsidian';
 import NovelistPlugin from '../main';
 import { ProjectManager } from './projectManager';
 
@@ -10,6 +10,7 @@ export class SessionManager {
     currentDateStr: string;
     sessionWordCount: number = 0;
     dailyTarget: number = 0;
+    hasNotifiedTargetMet: boolean = false;
     
     // Cache last known word counts for active files to calculate immediate deltas
     private fileWordCounts: Record<string, number> = {};
@@ -25,7 +26,7 @@ export class SessionManager {
         this.app = app;
         this.plugin = plugin;
         this.projectManager = new ProjectManager(app, plugin);
-        this.currentDateStr = new Date().toISOString().split('T')[0];
+        this.currentDateStr = this.getLocalDateStr();
         
         // Debounce history saving to prevent excessive file writes (wait 5 seconds of inactivity)
         this.debouncedHistorySave = debounce(this.saveHistory.bind(this), 5000, true);
@@ -33,10 +34,19 @@ export class SessionManager {
         this.checkDateReset();
     }
 
+    private getLocalDateStr(): string {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     private checkDateReset() {
-        const today = new Date().toISOString().split('T')[0];
+        const today = this.getLocalDateStr();
         if (today !== this.currentDateStr) {
             this.sessionWordCount = 0;
+            this.hasNotifiedTargetMet = false;
             this.currentDateStr = today;
             this.fileSessionBaselines = {}; // Reset baselines for the new day
             // The previous day's final count is already saved via the debounced saver
@@ -130,6 +140,12 @@ export class SessionManager {
                 if (delta > 0) this.sessionWordCount += delta;
             }
             
+            // Target notification logic
+            if (this.dailyTarget > 0 && this.sessionWordCount >= this.dailyTarget && !this.hasNotifiedTargetMet) {
+                this.hasNotifiedTargetMet = true;
+                new Notice(`🎉 Daily Target Met! ${this.sessionWordCount} words written. Great job!`);
+            }
+
             // Update caches
             this.fileWordCounts[file.path] = currentCount;
 

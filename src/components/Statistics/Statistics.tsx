@@ -8,6 +8,14 @@ interface StatisticsProps {
     project: TFolder;
 }
 
+// Helper to get local date string
+const getLocalDateString = (date: Date = new Date()): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 // Helper to check if a string is in YYYY-MM-DD format
 const isValidDateString = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 
@@ -23,7 +31,7 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
         const count = await pm.getProjectWordCount(project);
         setCurrentWordCount(count);
         
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
         setTodayCount(Number(newMeta?.writingHistory?.[todayStr] || 0));
     };
 
@@ -76,13 +84,13 @@ export const Statistics: React.FC<StatisticsProps> = ({ app, project }) => {
         const history = meta.writingHistory;
         const d = new Date();
 
-        const todayStr = d.toISOString().split('T')[0];
+        const todayStr = getLocalDateString(d);
         if (!history[todayStr] || history[todayStr] === 0) {
             d.setDate(d.getDate() - 1);
         }
 
         while (true) {
-            const dStr = d.toISOString().split('T')[0];
+            const dStr = getLocalDateString(d);
             if ((history[dStr] || 0) > 0) {
                 streakCount++;
                 d.setDate(d.getDate() - 1);
