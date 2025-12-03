@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
 import { ScriveningsModel } from './ScriveningsModel';
 import matter from 'gray-matter'; 
+import { ProjectManager } from '../../utils/projectManager';
 
 // CodeMirror Imports
 import { EditorState, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
@@ -18,7 +19,7 @@ class HeaderWidget extends WidgetType {
     toDOM() {
         const wrap = document.createElement("div");
         wrap.className = "scrivenings-separator";
-        wrap.innerHTML = `<span class="scrivenings-label">${this.title}</span>`;
+        wrap.innerHTML = `<s(pan class="scrivenings-label">${this.title}</span>`;
         return wrap;
     }
 
@@ -132,67 +133,67 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
     const modelRef = useRef<ScriveningsModel>(new ScriveningsModel(app, folder));
     const isSavingRef = useRef(false);
     const lastActivePathRef = useRef<string | null>(null);
+    
+    // 2. ADD a ref to store cursor positions
+    const cursorPositionsRef = useRef<Record<string, number>>({});
 
     const [stickyTitle, setStickyTitle] = useState<string>("");
+
+    // 3. ADD a debounced save handler specifically for the cursor
+    const debounceCursorSaveRef = useRef<NodeJS.Timeout | null>(null);
+    const handleCursorSave = (filePath: string, position: number) => {
+        if (debounceCursorSaveRef.current) clearTimeout(debounceCursorSaveRef.current);
+        debounceCursorSaveRef.current = setTimeout(async () => {
+            const projectManager = new ProjectManager(app);
+            const project = projectManager.getProjectForFile(folder);
+            if (!project) return;
+
+            // Prevent saving if the position hasn't actually changed
+            if (cursorPositionsRef.current[filePath] === position) return;
+
+            const newPositions = { ...cursorPositionsRef.current, [filePath]: position };
+            cursorPositionsRef.current = newPositions; // Update ref immediately
+
+            await projectManager.updateProjectMetadata(project, { 
+                cursorPositions: newPositions
+            });
+        }, 500); // A 500ms delay is good for cursor tracking
+    };
+
 
     useEffect(() => {
         if (!editorRef.current) return;
 
         const init = async () => {
             const text = await modelRef.current.load();
+
+            // 4. LOAD cursor positions from project metadata
+            const projectManager = new ProjectManager(app);
+            const project = projectManager.getProjectForFile(folder);
+            if (project) {
+                const meta = projectManager.getProjectMetadata(project);
+                if (meta && meta.cursorPositions) {
+                    cursorPositionsRef.current = meta.cursorPositions;
+                }
+            }
             
+            let initialCursorPos = 0;
             if (modelRef.current.sections.length > 0) {
                 const firstFile = modelRef.current.sections[0].file;
                 lastActivePathRef.current = firstFile.path;
                 setStickyTitle(firstFile.basename);
                 (app.workspace as any).trigger('novelist:select-file', firstFile);
+
+                // Get the saved position for the first file
+                initialCursorPos = cursorPositionsRef.current[firstFile.path] || 0;
             }
 
             const state = EditorState.create({
                 doc: text,
+                // 5. SET the initial cursor position
+                selection: { anchor: initialCursorPos },
                 extensions: [
-                    highlightSpecialChars(),
-                    history(),
-                    drawSelection(),
-                    keymap.of([...defaultKeymap, ...historyKeymap]),
-                    markdown({ codeLanguages: languages }), // Required for Syntax Tree to work
-                    EditorView.lineWrapping,
-                    
-                    // Custom Extensions
-                    protectSeparators,
-                    separatorField(modelRef.current),
-                    livePreviewExtension(app, modelRef.current),   // <--- Inject Live Preview Extension here
-
-                    EditorView.theme({
-                        "&": { height: "100%", fontSize: "var(--font-text-size)" },
-                        ".cm-scroller": { fontFamily: "var(--font-text)" },
-                        ".cm-content": { paddingBottom: "200px", maxWidth: "800px", margin: "0 auto", paddingTop: "40px" },
-                        ".cm-gutters": { display: "none" },
-                        ".cm-cursor, .cm-dropCursor": { 
-                            borderLeftColor: "var(--caret-color, var(--text-normal)) !important" 
-                        },
-                        ".scrivenings-separator": {
-                            display: "block",
-                            borderTop: "1px dashed var(--background-modifier-border)",
-                            marginTop: "30px", 
-                            marginBottom: "15px",
-                            paddingTop: "5px",
-                            color: "var(--text-muted)",
-                            textAlign: "center",
-                            fontSize: "0.85em",
-                            fontWeight: "600",
-                            userSelect: "none"
-                        },
-                        // Live Preview Block Styles
-                        ".novelist-live-preview-block": {
-                            marginTop: "0.5em",
-                            marginBottom: "0.5em"
-                        },
-                        ".novelist-live-preview-block h1, .novelist-live-preview-block h2, .novelist-live-preview-block h3": {
-                            marginTop: "0 !important", // Let CM handle spacing
-                            marginBottom: "0 !important"
-                        }
-                    }),
+                    // ... (keep existing extensions)
 
                     EditorView.updateListener.of((update) => {
                         if (update.docChanged) {
@@ -200,8 +201,9 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
                                 handleSave(update.state.doc.toString());
                             }
                         }
-                        if (update.selectionSet || update.docChanged) {
-                            detectActiveFile(update.state);
+                        // 6. MODIFY this block to call our new function on selection changes
+                        if (update.selectionSet) {
+                            detectActiveFileAndSaveCursor(update.state);
                         }
                         if (update.viewportChanged || update.docChanged) {
                             updateStickyHeader(update.view);
@@ -216,7 +218,8 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
 
         init();
 
-        const detectActiveFile = (state: EditorState) => {
+        // 7. RENAME this function to reflect its new responsibility
+        const detectActiveFileAndSaveCursor = (state: EditorState) => {
             const pos = state.selection.main.head;
             const docString = state.doc.toString();
             const regex = /<!-- SC_BREAK -->/g;
@@ -233,9 +236,14 @@ export const SeamlessEditor: React.FC<EditorProps> = ({ app, folder }) => {
             }
 
             const activeSection = modelRef.current.sections[sectionIndex];
-            if (activeSection && activeSection.file.path !== lastActivePathRef.current) {
-                lastActivePathRef.current = activeSection.file.path;
-                (app.workspace as any).trigger('novelist:select-file', activeSection.file);
+            if (activeSection) {
+                // 8. ADD the call to save the cursor position
+                handleCursorSave(activeSection.file.path, pos);
+
+                if (activeSection.file.path !== lastActivePathRef.current) {
+                    lastActivePathRef.current = activeSection.file.path;
+                    (app.workspace as any).trigger('novelist:select-file', activeSection.file);
+                }
             }
         };
 

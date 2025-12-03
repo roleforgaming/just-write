@@ -432,7 +432,9 @@ notes: ""
             targetSessionCount: fm.targetSessionCount || 0,
             targetDeadline: fm.targetDeadline || '',
             writingHistory: fm.writingHistory || {},
-            wordCountFolders: fm.wordCountFolders || []
+            wordCountFolders: fm.wordCountFolders || [],
+            // ADDED FOR CURSOR POSITION
+            cursorPositions: fm.cursorPositions || {},
         };
     }
 
@@ -450,6 +452,8 @@ notes: ""
         targetDeadline?: string,
         writingHistory?: Record<string, number>,
         wordCountFolders?: string[]
+        // ADDED FOR CURSOR POSITION
+        cursorPositions?: Record<string, number>
     }) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return;
@@ -468,6 +472,8 @@ notes: ""
             if (data.targetDeadline !== undefined) fm.targetDeadline = data.targetDeadline;
             if (data.writingHistory !== undefined) fm.writingHistory = data.writingHistory;
             if (data.wordCountFolders !== undefined) fm.wordCountFolders = data.wordCountFolders;
+            // ADDED FOR CURSOR POSITION
+            if (data.cursorPositions !== undefined) fm.cursorPositions = data.cursorPositions;
         });
     }
 
