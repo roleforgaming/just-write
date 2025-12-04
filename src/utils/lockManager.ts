@@ -71,7 +71,6 @@ export class LockManager {
     }
 
     async toggleLock(leaf: WorkspaceLeaf) {
-        // FIX: Cast leaf to any to access the .id property
         const leafId = (leaf as any).id;
         const lockedIds = new Set(this.plugin.settings.lockedLeafIds);
 
@@ -89,7 +88,6 @@ export class LockManager {
     }
 
     isLocked(leaf: WorkspaceLeaf): boolean {
-        // FIX: Cast leaf to any to access the .id property
         return this.plugin.settings.lockedLeafIds.includes((leaf as any).id);
     }
 
@@ -123,24 +121,30 @@ export class LockManager {
     }
 
     private updateTabIndicator(leaf: WorkspaceLeaf, isLocked: boolean) {
-        // FIX: Cast leaf to any to access the .id property
-        const tabHeader = document.querySelector(`.workspace-tab-header[data-leaf-id="${(leaf as any).id}"]`);
+        // --- THIS IS THE FIX ---
+        // Use the leaf's internal reference to its tab header element.
+        // This is far more reliable than a global document query.
+        const tabHeader = (leaf as any).tabHeaderEl as HTMLElement | undefined;
         if (!tabHeader) return;
 
-        const iconContainer = tabHeader.querySelector('.workspace-tab-header-inner-icon');
-        if (!iconContainer) return;
+        // The container for the title and file icon.
+        const innerContainer = tabHeader.querySelector('.workspace-tab-header-inner');
+        if (!innerContainer) return;
         
         let tabIcon = this.leafTabIcons.get(leaf);
         
         if (isLocked) {
             if (!tabIcon) {
+                // Create the icon if it doesn't exist
                 tabIcon = document.createElement('div');
                 tabIcon.addClass('novelist-tab-lock-icon');
                 setIcon(tabIcon, 'lock');
-                iconContainer.prepend(tabIcon);
+                // Prepend it so it appears before the file icon
+                innerContainer.prepend(tabIcon);
                 this.leafTabIcons.set(leaf, tabIcon);
             }
         } else {
+            // If it's not locked, remove the icon and clean up the map
             if (tabIcon) {
                 tabIcon.remove();
                 this.leafTabIcons.delete(leaf);
