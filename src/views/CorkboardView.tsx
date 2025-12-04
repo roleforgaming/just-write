@@ -48,46 +48,33 @@ export class CorkboardView extends ItemView {
      * @returns true if the leaf is valid, false otherwise.
      */
     private isLeafValid(leaf: WorkspaceLeaf | null): boolean {
-        console.log("Novelist: [CorkboardView] Checking partner leaf validity...");
         if (!leaf) {
-            console.log("Novelist: [CorkboardView] Leaf is null. Invalid.");
             return false;
         }
         // A leaf is considered detached (closed) if its container element is no longer part of the document's DOM.
-        const isValid = leaf.view.containerEl.isConnected;
-        console.log(`Novelist: [CorkboardView] Leaf validity check: isConnected = ${isValid}`);
-        return isValid;
+        return leaf.view.containerEl.isConnected;
     }
 
     handleCardSelect = (file: TFile) => {
-        console.log(`Novelist: [CorkboardView] Card selected: ${file.path}`);
-        
         // Trigger inspector update for other views that might be listening
         (this.app.workspace as any).trigger('novelist:select-file', file);
     
         let leafToOpenIn = this.partnerLeaf;
-        console.log(`Novelist: [CorkboardView] Initial partner leaf:`, leafToOpenIn);
     
         // 1. Check if the existing partner leaf reference is still valid/attached
         if (!this.isLeafValid(leafToOpenIn)) {
-            console.log("Novelist: [CorkboardView] Partner leaf is no longer valid. Discarding reference.");
+            // If invalid, discard the old reference so we fall back to the "new tab" logic
             this.partnerLeaf = null;
             leafToOpenIn = null;
         }
 
-        // 2. If no valid partner leaf, create a new one by splitting the current leaf.
-        if (!leafToOpenIn) {
-            console.log("Novelist: [CorkboardView] No valid partner leaf. Creating a new split.");
-            leafToOpenIn = this.app.workspace.createLeafBySplit(this.leaf, 'vertical');
-            this.partnerLeaf = leafToOpenIn; // Save the new reference
-            console.log("Novelist: [CorkboardView] New partner leaf created:", this.partnerLeaf);
+        // 2. If we have a valid partner leaf, use it. Otherwise, fall back to a new tab.
+        if (leafToOpenIn) {
+            leafToOpenIn.openFile(file);
         } else {
-            console.log("Novelist: [CorkboardView] Reusing existing valid partner leaf.");
+            // This case handles both when the setting is off, and when the user has closed the partner pane.
+            this.app.workspace.getLeaf('tab').openFile(file);
         }
-    
-        // 3. Open the file in the designated leaf.
-        console.log(`Novelist: [CorkboardView] Opening file in partner leaf.`);
-        leafToOpenIn.openFile(file);
     };
 
     renderReact() {

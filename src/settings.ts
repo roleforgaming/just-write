@@ -37,6 +37,7 @@ export interface NovelistSettings {
     binderDragSensitivity: number;
 
     // 4. Corkboard
+    corkboardAutoSplit: boolean;
     corkboardDefaultSize: 'small' | 'medium' | 'large';
     corkboardShowIcon: boolean;
     corkboardShowAccent: boolean;
@@ -97,6 +98,7 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
     binderShowRank: true,
     binderSortOrder: ['Manuscript', 'Research', 'Story Bible', 'Trash'],
     binderDragSensitivity: 8,
+    corkboardAutoSplit: true,
     corkboardDefaultSize: 'medium',
     corkboardShowIcon: true,
     corkboardShowAccent: true,
@@ -162,7 +164,20 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
         
-        // ... [Existing Sections Omitted for Brevity - keep them] ...
+        // --- CORKBOARD SETTINGS ---
+        containerEl.createEl('h2', { text: 'Corkboard' });
+
+        new Setting(containerEl)
+            .setName('Automatic Split View')
+            .setDesc('When opening a corkboard, automatically open a second pane to its right for viewing files.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.corkboardAutoSplit)
+                .onChange(async (value) => {
+                    this.plugin.settings.corkboardAutoSplit = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        // ... [Other sections omitted for brevity] ...
 
         // --- 11. Snapshots ---
         containerEl.createEl('h2', { text: 'Document Snapshots' });

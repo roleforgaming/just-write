@@ -371,13 +371,16 @@ export default class NovelistPlugin extends Plugin {
             state: { folderPath: folder.path }
         });
 
-        // Create a partner leaf to the right.
-        const partnerLeaf = this.app.workspace.createLeafBySplit(corkboardLeaf, 'vertical');
-        
-        // Get the view instance and pass the partner leaf reference directly.
-        const view = corkboardLeaf.view;
-        if (view instanceof CorkboardView) {
-            view.setPartnerLeaf(partnerLeaf);
+        // Conditionally create the split based on the setting
+        if (this.settings.corkboardAutoSplit) {
+            // Create a partner leaf to the right.
+            const partnerLeaf = this.app.workspace.createLeafBySplit(corkboardLeaf, 'vertical');
+            
+            // Get the view instance and pass the partner leaf reference directly.
+            const view = corkboardLeaf.view;
+            if (view instanceof CorkboardView) {
+                view.setPartnerLeaf(partnerLeaf);
+            }
         }
         
         // Ensure the corkboard leaf is the active one.
