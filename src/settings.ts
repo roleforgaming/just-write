@@ -81,6 +81,9 @@ export interface NovelistSettings {
     lastDailySnapshotDate: string; // YYYY-MM-DD (Persisted state)
     enablePruning: boolean;
     pruningSettings: PruningSettings;
+
+    // FIX: Moved this property inside the interface
+    lockedLeafIds: string[]; 
 }
 
 export const DEFAULT_SETTINGS: NovelistSettings = {
@@ -133,8 +136,11 @@ export const DEFAULT_SETTINGS: NovelistSettings = {
         keepWeekly: 4,
         keepMonthly: 12,
     },
+    // FIX: This property is now correctly recognized
+    lockedLeafIds: [],
 };
 
+// ... Rest of the file is unchanged ...
 export class NovelistSettingTab extends PluginSettingTab {
     plugin: NovelistPlugin;
 
@@ -177,8 +183,6 @@ export class NovelistSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // ... [Other sections omitted for brevity] ...
-
         // --- 11. Snapshots ---
         containerEl.createEl('h2', { text: 'Document Snapshots' });
 
@@ -200,7 +204,6 @@ export class NovelistSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.enableDailyAutoSnapshot = value;
                     await this.plugin.saveSettings();
-                    // FIX: Immediately update timer state in manager
                     if (value) {
                         this.plugin.autoSnapshotManager.startDailyTimer();
                     } else {

@@ -2387,21 +2387,30 @@ body {
     background-color: rgba(var(--interactive-accent-rgb), 0.1);
 }
 
-/* --- Persistent Icon Styling --- */
-
-/* Default (Unlocked) state for the icon */
+/* Persistent Header Icon Styling */
 .novelist-lock-toggle-icon {
     color: var(--icon-color);
-    opacity: 0.6; /* Make it less prominent when unlocked */
+    opacity: 0.6;
     transition: all 0.2s ease-in-out;
 }
-
 .novelist-lock-toggle-icon:hover {
     opacity: 1;
 }
-
-/* Locked state for the icon */
 .novelist-lock-toggle-icon.is-locked {
-    color: var(--interactive-accent); /* Use theme accent color */
-    opacity: 1; /* Make it fully visible when locked */
+    color: var(--interactive-accent);
+    opacity: 1;
+}
+
+/* --- NEW: Tab Indicator Icon Styling --- */
+.novelist-tab-lock-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--interactive-accent);
+    padding-right: 4px; /* Add some space between it and the file icon */
+}
+
+.novelist-tab-lock-icon svg.svg-icon {
+    height: 14px; /* Make it slightly smaller than the file icon */
+    width: 14px;
 }

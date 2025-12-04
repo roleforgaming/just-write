@@ -5,10 +5,8 @@ export class LockManager {
     private app: App;
     private plugin: NovelistPlugin;
     
-    // Tracks the lock state (true/false)
-    private lockedLeaves: WeakSet<WorkspaceLeaf> = new WeakSet();
-    // Tracks the icon DOM element for each leaf so we can modify it
-    private leafIcons: WeakMap<WorkspaceLeaf, HTMLElement> = new WeakMap();
+    private leafHeaderIcons: WeakMap<WorkspaceLeaf, HTMLElement> = new WeakMap();
+    private leafTabIcons: WeakMap<WorkspaceLeaf, HTMLElement> = new WeakMap();
     
     private originalOpenFile: (file: TFile, openState?: OpenViewState) => Promise<void>;
 
@@ -18,7 +16,6 @@ export class LockManager {
     }
 
     load() {
-        // Monkey-patch remains the same, it handles the core lock *functionality*
         this.originalOpenFile = WorkspaceLeaf.prototype.openFile;
         const self = this;
         // @ts-ignore
@@ -34,12 +31,10 @@ export class LockManager {
             return self.originalOpenFile.call(leaf, file, openState);
         };
 
-        // This event fires whenever panes are created, split, or closed.
-        // It's our hook to add/update icons.
         this.plugin.registerEvent(this.app.workspace.on('layout-change', () => this.addIconsToAllLeaves()));
+        this.plugin.registerEvent(this.app.workspace.on('active-leaf-change', () => this.addIconsToAllLeaves()));
 
-        // Run once on load for any already-open leaves
-        this.addIconsToAllLeaves();
+        this.app.workspace.onLayoutReady(() => this.addIconsToAllLeaves());
         
         console.log("Novelist: Persistent Editor Lock initialized.");
     }
@@ -48,30 +43,22 @@ export class LockManager {
         if (this.originalOpenFile) {
             WorkspaceLeaf.prototype.openFile = this.originalOpenFile;
         }
-        // Clean up all icons and classes on unload
         this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
-            if (this.leafIcons.has(leaf)) {
-                this.leafIcons.get(leaf)?.remove();
-            }
+            this.leafHeaderIcons.get(leaf)?.remove();
+            this.leafTabIcons.get(leaf)?.remove();
             this.updateContainerClass(leaf, false);
         });
     }
 
-    /**
-     * Iterates all markdown panes and ensures they have a lock icon.
-     */
     private addIconsToAllLeaves() {
         this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
-            // Check if it's a markdown view and doesn't already have our icon
-            if (leaf.view instanceof MarkdownView && !this.leafIcons.has(leaf)) {
+            if (leaf.view instanceof MarkdownView && !this.leafHeaderIcons.has(leaf)) {
                 this.addIconToLeaf(leaf);
             }
+            this.updateLeafVisuals(leaf);
         });
     }
 
-    /**
-     * Adds a single lock/unlock icon to a given leaf's header.
-     */
     private addIconToLeaf(leaf: WorkspaceLeaf) {
         const viewActions = leaf.view.containerEl.querySelector('.view-actions');
         if (!viewActions) return;
@@ -79,44 +66,45 @@ export class LockManager {
         const lockIcon = viewActions.createDiv({
             cls: ['clickable-icon', 'view-action', 'novelist-lock-toggle-icon'],
         });
-
-        // The icon itself handles toggling the lock
         lockIcon.onclick = () => this.toggleLock(leaf);
-        
-        this.leafIcons.set(leaf, lockIcon);
-
-        // Set the correct initial appearance (locked or unlocked)
-        this.updateIconAppearance(leaf);
+        this.leafHeaderIcons.set(leaf, lockIcon);
     }
 
-    /**
-     * The main function to toggle a pane's lock state.
-     */
-    toggleLock(leaf: WorkspaceLeaf) {
-        if (this.isLocked(leaf)) {
-            this.lockedLeaves.delete(leaf);
+    async toggleLock(leaf: WorkspaceLeaf) {
+        // FIX: Cast leaf to any to access the .id property
+        const leafId = (leaf as any).id;
+        const lockedIds = new Set(this.plugin.settings.lockedLeafIds);
+
+        if (lockedIds.has(leafId)) {
+            lockedIds.delete(leafId);
             new Notice("Pane Unlocked");
         } else {
-            this.lockedLeaves.add(leaf);
+            lockedIds.add(leafId);
             new Notice("Pane Locked");
         }
-        // After changing state, update all visuals
-        this.updateContainerClass(leaf, this.isLocked(leaf));
-        this.updateIconAppearance(leaf);
+
+        this.plugin.settings.lockedLeafIds = Array.from(lockedIds);
+        await this.plugin.saveSettings();
+        this.updateLeafVisuals(leaf);
     }
 
     isLocked(leaf: WorkspaceLeaf): boolean {
-        return this.lockedLeaves.has(leaf);
+        // FIX: Cast leaf to any to access the .id property
+        return this.plugin.settings.lockedLeafIds.includes((leaf as any).id);
     }
 
-    /**
-     * Updates the icon's SVG and CSS class based on the lock state.
-     */
-    private updateIconAppearance(leaf: WorkspaceLeaf) {
-        const iconEl = this.leafIcons.get(leaf);
+    private updateLeafVisuals(leaf: WorkspaceLeaf) {
+        const isLocked = this.isLocked(leaf);
+        this.updateHeaderIcon(leaf, isLocked);
+        this.updateContainerClass(leaf, isLocked);
+        this.updateTabIndicator(leaf, isLocked);
+    }
+
+    private updateHeaderIcon(leaf: WorkspaceLeaf, isLocked: boolean) {
+        const iconEl = this.leafHeaderIcons.get(leaf);
         if (!iconEl) return;
 
-        if (this.isLocked(leaf)) {
+        if (isLocked) {
             setIcon(iconEl, 'lock');
             iconEl.addClass('is-locked');
             iconEl.setAttribute('aria-label', 'Pane is Locked (Click to Unlock)');
@@ -127,14 +115,36 @@ export class LockManager {
         }
     }
 
-    /**
-     * Updates the border on the leaf's container.
-     */
     private updateContainerClass(leaf: WorkspaceLeaf, isLocked: boolean) {
         const container = leaf.view.containerEl.parentElement; 
         if (container) {
-            if (isLocked) container.addClass('novelist-is-locked');
-            else container.removeClass('novelist-is-locked');
+            container.toggleClass('novelist-is-locked', isLocked);
+        }
+    }
+
+    private updateTabIndicator(leaf: WorkspaceLeaf, isLocked: boolean) {
+        // FIX: Cast leaf to any to access the .id property
+        const tabHeader = document.querySelector(`.workspace-tab-header[data-leaf-id="${(leaf as any).id}"]`);
+        if (!tabHeader) return;
+
+        const iconContainer = tabHeader.querySelector('.workspace-tab-header-inner-icon');
+        if (!iconContainer) return;
+        
+        let tabIcon = this.leafTabIcons.get(leaf);
+        
+        if (isLocked) {
+            if (!tabIcon) {
+                tabIcon = document.createElement('div');
+                tabIcon.addClass('novelist-tab-lock-icon');
+                setIcon(tabIcon, 'lock');
+                iconContainer.prepend(tabIcon);
+                this.leafTabIcons.set(leaf, tabIcon);
+            }
+        } else {
+            if (tabIcon) {
+                tabIcon.remove();
+                this.leafTabIcons.delete(leaf);
+            }
         }
     }
 }
