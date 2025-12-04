@@ -2377,24 +2377,31 @@ body {
     opacity: 0;
 }
 
-/* Visual indicator for Locked Panes */
+/* Border indication for the locked pane */
 .workspace-leaf.novelist-is-locked {
-    border: 2px solid var(--interactive-accent);
+    box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
 
-/* Add a lock icon in the top right of the pane */
-.workspace-leaf.novelist-is-locked::after {
-    content: "🔒"; 
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 16px;
-    opacity: 0.5;
-    pointer-events: none; /* Let clicks pass through */
-    z-index: 100;
-}
-
-/* Optional: Change the header background of locked panes */
+/* Optional: Subtle background tint for the header of a locked pane */
 .workspace-leaf.novelist-is-locked .view-header {
     background-color: rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+/* --- Persistent Icon Styling --- */
+
+/* Default (Unlocked) state for the icon */
+.novelist-lock-toggle-icon {
+    color: var(--icon-color);
+    opacity: 0.6; /* Make it less prominent when unlocked */
+    transition: all 0.2s ease-in-out;
+}
+
+.novelist-lock-toggle-icon:hover {
+    opacity: 1;
+}
+
+/* Locked state for the icon */
+.novelist-lock-toggle-icon.is-locked {
+    color: var(--interactive-accent); /* Use theme accent color */
+    opacity: 1; /* Make it fully visible when locked */
 }

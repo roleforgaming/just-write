@@ -59,7 +59,6 @@ export default class NovelistPlugin extends Plugin {
             id: 'toggle-pane-lock',
             name: 'Toggle Pane Lock',
             callback: () => {
-                // Get the active leaf (pane)
                 const leaf = this.app.workspace.getLeaf(false);
                 if (leaf) {
                     this.lockManager.toggleLock(leaf);
