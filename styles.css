@@ -2376,3 +2376,25 @@ body {
 .snapshot-actions .pin-toggle-btn {
     opacity: 0;
 }
+
+/* Visual indicator for Locked Panes */
+.workspace-leaf.novelist-is-locked {
+    border: 2px solid var(--interactive-accent);
+}
+
+/* Add a lock icon in the top right of the pane */
+.workspace-leaf.novelist-is-locked::after {
+    content: "🔒"; 
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 16px;
+    opacity: 0.5;
+    pointer-events: none; /* Let clicks pass through */
+    z-index: 100;
+}
+
+/* Optional: Change the header background of locked panes */
+.workspace-leaf.novelist-is-locked .view-header {
+    background-color: rgba(var(--interactive-accent-rgb), 0.1);
+}

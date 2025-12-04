@@ -13,6 +13,7 @@ import { SnapshotManager } from './utils/snapshotManager';
 import { Logger } from './utils/logger';
 import { NovelistSettingTab, NovelistSettings, DEFAULT_SETTINGS } from './settings';
 import { AutoSnapshotManager } from './features/snapshots/autoSnapshotManager';
+import { LockManager } from './utils/lockManager'; 
 
 export default class NovelistPlugin extends Plugin {
     settings: NovelistSettings;
@@ -21,6 +22,7 @@ export default class NovelistPlugin extends Plugin {
     autoSnapshotManager: AutoSnapshotManager;
     logger: Logger;
     statusBarItem: HTMLElement;
+    lockManager: LockManager;
 
     async onload() {
         await this.loadSettings();
@@ -40,6 +42,10 @@ export default class NovelistPlugin extends Plugin {
         this.autoSnapshotManager = new AutoSnapshotManager(this, this.snapshotManager, this.settings, this.logger);
         this.autoSnapshotManager.load();
 
+         // --- Initialize Lock Manager ---
+        this.lockManager = new LockManager(this.app, this);
+        this.lockManager.load();
+
         // --- 1. Register Views ---
         this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf, this));
         this.registerView(VIEW_TYPE_CORKBOARD, (leaf) => new CorkboardView(leaf, this));
@@ -48,6 +54,18 @@ export default class NovelistPlugin extends Plugin {
         this.registerView(VIEW_TYPE_BINDER, (leaf) => new BinderView(leaf, this));
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
         this.registerView(VIEW_TYPE_STATISTICS, (leaf) => new StatisticsView(leaf));
+
+        this.addCommand({
+            id: 'toggle-pane-lock',
+            name: 'Toggle Pane Lock',
+            callback: () => {
+                // Get the active leaf (pane)
+                const leaf = this.app.workspace.getLeaf(false);
+                if (leaf) {
+                    this.lockManager.toggleLock(leaf);
+                }
+            },
+        });
 
         // --- 2. Ribbon Icons ---
         this.addRibbonIcon('book', 'Open Binder', () => {
@@ -261,6 +279,9 @@ export default class NovelistPlugin extends Plugin {
     async onunload() {
         if (this.autoSnapshotManager) {
             this.autoSnapshotManager.unload();
+            if (this.lockManager) {
+            this.lockManager.unload();
+        }
         }
 
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
