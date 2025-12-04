@@ -362,12 +362,26 @@ export default class NovelistPlugin extends Plugin {
     }
 
     async openCorkboard(folder: TFolder) {
-        const leaf = this.app.workspace.getLeaf(true);
-        await leaf.setViewState({
+        const corkboardLeaf = this.app.workspace.getLeaf('tab');
+        
+        // Set the view to Corkboard. This ensures the view instance is created.
+        await corkboardLeaf.setViewState({
             type: VIEW_TYPE_CORKBOARD,
             active: true,
             state: { folderPath: folder.path }
         });
+
+        // Create a partner leaf to the right.
+        const partnerLeaf = this.app.workspace.createLeafBySplit(corkboardLeaf, 'vertical');
+        
+        // Get the view instance and pass the partner leaf reference directly.
+        const view = corkboardLeaf.view;
+        if (view instanceof CorkboardView) {
+            view.setPartnerLeaf(partnerLeaf);
+        }
+        
+        // Ensure the corkboard leaf is the active one.
+        this.app.workspace.revealLeaf(corkboardLeaf);
     }
 
     async openScrivenings(folder: TFolder) {

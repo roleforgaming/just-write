@@ -12,9 +12,10 @@ interface CardProps {
     app: App;
     size: 'small' | 'medium' | 'large';
     readOnly?: boolean;
+    onCardSelect: (file: TFile) => void;
 }
 
-export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false }) => {
+export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false, onCardSelect }) => {
     const [meta, setMeta] = useState<NovelistMetadata>(getMetadata(app, file));
     const [title, setTitle] = useState(file.basename);
 
@@ -85,17 +86,13 @@ export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false })
     // @ts-ignore
     const IconComponent = Lucide[meta.icon.charAt(0).toUpperCase() + meta.icon.slice(1)] || Lucide.FileText;
 
-    const handleSingleClick = () => {
-        (app.workspace as any).trigger('novelist:select-file', file);
-    };
-
     return (
         <div 
             ref={setNodeRef} 
             style={style} 
             className={`novelist-index-card card-size-${size}`}
-            onClick={handleSingleClick}
-            onDoubleClick={() => app.workspace.getLeaf(false).openFile(file)}
+            onClick={() => onCardSelect(file)}
+            onDoubleClick={() => app.workspace.getLeaf('tab').openFile(file)}
         >
             <div className="novelist-card-accent" style={{ backgroundColor: meta.accentColor || '#ccc' }} />
 

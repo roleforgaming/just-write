@@ -10,9 +10,10 @@ import { Plus } from 'lucide-react';
 interface BoardProps {
     app: App;
     folder: TFolder;
+    onCardSelect: (file: TFile) => void;
 }
 
-export const Board: React.FC<BoardProps> = ({ app, folder }) => {
+export const Board: React.FC<BoardProps> = ({ app, folder, onCardSelect }) => {
     const [files, setFiles] = useState<TFile[]>([]);
     const [cardSize, setCardSize] = useState<'small' | 'medium' | 'large'>('medium');
     const projectManager = new ProjectManager(app);
@@ -139,6 +140,7 @@ notes: ""
                                 app={app} 
                                 size={cardSize}
                                 readOnly={isTrash}
+                                onCardSelect={onCardSelect}
                             />
                         ))}
                     </SortableContext>

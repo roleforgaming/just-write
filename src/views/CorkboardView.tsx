@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFolder, TFile } from 'obsidian'; // Fixed: Added TFile
+import { ItemView, WorkspaceLeaf, TFolder, TFile } from 'obsidian';
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Board } from '../components/Corkboard/Board';
@@ -9,7 +9,8 @@ export const VIEW_TYPE_CORKBOARD = "novelist-corkboard-view";
 export class CorkboardView extends ItemView {
     root: Root | null = null;
     currentFolder: TFolder | null = null;
-    isProjectContext: boolean = true; // State to track valid context
+    isProjectContext: boolean = true;
+    partnerLeaf: WorkspaceLeaf | null = null; // Stores the actual leaf instance
 
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
@@ -19,36 +20,17 @@ export class CorkboardView extends ItemView {
     getDisplayText() { return this.currentFolder ? this.currentFolder.name : "Corkboard"; }
     getIcon() { return "layout-grid"; }
 
+    setPartnerLeaf(leaf: WorkspaceLeaf) {
+        this.partnerLeaf = leaf;
+    }
+
     async setState(state: any, result: any): Promise<void> {
+        // No need to process partnerLeafId from state anymore, it's set via setPartnerLeaf()
         if (state.folderPath) {
             const abstractFile = this.app.vault.getAbstractFileByPath(state.folderPath);
             if (abstractFile instanceof TFolder) {
-                
-                // Check if this folder is part of a project
                 const pm = new ProjectManager(this.app);
-                // Heuristic: Check if the folder, or any parent, is a project
-                // Note: children[0] check is risky if folder is empty, so we check the folder itself
-                // To be safe, we check if the folder is inside a project structure
-                let validProject = false;
-                
-                // If the folder contains a project marker, it is the root
-                if (pm.isProject(abstractFile)) {
-                    validProject = true;
-                } else {
-                    // Otherwise check heuristic based on path or parent
-                    // We need a file to trace back up, or we assume if it has a parent that is a project
-                    const dummyCheck = abstractFile.children.find(f => f instanceof TFile) as TFile;
-                    if (dummyCheck) {
-                        const root = pm.getProjectForFile(dummyCheck);
-                        if (root) validProject = true;
-                    } else if (abstractFile.parent) {
-                        // Scan up from parent
-                        const root = pm.getProjectForFile(abstractFile.parent.children[0] as TFile); // rough check
-                         if (root) validProject = true;
-                    }
-                }
-                
-                this.isProjectContext = validProject;
+                this.isProjectContext = !!pm.getProjectForFile(abstractFile);
                 this.currentFolder = abstractFile;
                 this.renderReact();
             }
@@ -59,6 +41,54 @@ export class CorkboardView extends ItemView {
     async onOpen() {
         this.root = createRoot(this.contentEl);
     }
+    
+    /**
+     * Checks if a WorkspaceLeaf is still valid and part of the workspace layout.
+     * @param leaf The leaf to check.
+     * @returns true if the leaf is valid, false otherwise.
+     */
+    private isLeafValid(leaf: WorkspaceLeaf | null): boolean {
+        console.log("Novelist: [CorkboardView] Checking partner leaf validity...");
+        if (!leaf) {
+            console.log("Novelist: [CorkboardView] Leaf is null. Invalid.");
+            return false;
+        }
+        // A leaf is considered detached (closed) if its container element is no longer part of the document's DOM.
+        const isValid = leaf.view.containerEl.isConnected;
+        console.log(`Novelist: [CorkboardView] Leaf validity check: isConnected = ${isValid}`);
+        return isValid;
+    }
+
+    handleCardSelect = (file: TFile) => {
+        console.log(`Novelist: [CorkboardView] Card selected: ${file.path}`);
+        
+        // Trigger inspector update for other views that might be listening
+        (this.app.workspace as any).trigger('novelist:select-file', file);
+    
+        let leafToOpenIn = this.partnerLeaf;
+        console.log(`Novelist: [CorkboardView] Initial partner leaf:`, leafToOpenIn);
+    
+        // 1. Check if the existing partner leaf reference is still valid/attached
+        if (!this.isLeafValid(leafToOpenIn)) {
+            console.log("Novelist: [CorkboardView] Partner leaf is no longer valid. Discarding reference.");
+            this.partnerLeaf = null;
+            leafToOpenIn = null;
+        }
+
+        // 2. If no valid partner leaf, create a new one by splitting the current leaf.
+        if (!leafToOpenIn) {
+            console.log("Novelist: [CorkboardView] No valid partner leaf. Creating a new split.");
+            leafToOpenIn = this.app.workspace.createLeafBySplit(this.leaf, 'vertical');
+            this.partnerLeaf = leafToOpenIn; // Save the new reference
+            console.log("Novelist: [CorkboardView] New partner leaf created:", this.partnerLeaf);
+        } else {
+            console.log("Novelist: [CorkboardView] Reusing existing valid partner leaf.");
+        }
+    
+        // 3. Open the file in the designated leaf.
+        console.log(`Novelist: [CorkboardView] Opening file in partner leaf.`);
+        leafToOpenIn.openFile(file);
+    };
 
     renderReact() {
         if (!this.currentFolder) return;
@@ -73,7 +103,7 @@ export class CorkboardView extends ItemView {
         }
 
         this.root?.render(
-            <Board app={this.app} folder={this.currentFolder} />
+            <Board app={this.app} folder={this.currentFolder} onCardSelect={this.handleCardSelect} />
         );
     }
 
