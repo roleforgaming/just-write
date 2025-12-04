@@ -11,9 +11,10 @@ interface BoardProps {
     app: App;
     folder: TFolder;
     onCardSelect: (file: TFile) => void;
+    onOpenFileRequest: (file: TFile) => void;
 }
 
-export const Board: React.FC<BoardProps> = ({ app, folder, onCardSelect }) => {
+export const Board: React.FC<BoardProps> = ({ app, folder, onCardSelect, onOpenFileRequest }) => {
     const [files, setFiles] = useState<TFile[]>([]);
     const [cardSize, setCardSize] = useState<'small' | 'medium' | 'large'>('medium');
     const projectManager = new ProjectManager(app);
@@ -141,6 +142,7 @@ notes: ""
                                 size={cardSize}
                                 readOnly={isTrash}
                                 onCardSelect={onCardSelect}
+                                onOpenFileRequest={onOpenFileRequest}
                             />
                         ))}
                     </SortableContext>

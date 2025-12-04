@@ -350,6 +350,8 @@ body {
     z-index: 100;
 }
 
+
+
 /* Accent Bar */
 .novelist-card-accent {
     height: 6px; /* Explicit height */
@@ -363,6 +365,38 @@ body {
     
     /* Fallback color if JS fails */
     background-color: #ccc; 
+}
+
+/* --- Corkboard Card Actions --- */
+.novelist-card-top-right-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex; /* This is the key change */
+    flex-direction: row;
+    gap: 4px; /* Adds a small space between buttons */
+    z-index: 10;
+}
+
+.novelist-card-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background-color: var(--background-secondary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.novelist-card-action-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.novelist-drag-handle {
+    cursor: move;
 }
 
 /* Drag Handle (Top Right) */

@@ -9,10 +9,10 @@ import { StatisticsView, VIEW_TYPE_STATISTICS } from './views/StatisticsView';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { ProjectManager } from './utils/projectManager';
 import { SessionManager } from './utils/sessionManager'; 
-import { SnapshotManager } from './utils/snapshotManager'; // Import
-import { Logger } from './utils/logger'; // Import
+import { SnapshotManager } from './utils/snapshotManager';
+import { Logger } from './utils/logger';
 import { NovelistSettingTab, NovelistSettings, DEFAULT_SETTINGS } from './settings';
-import { AutoSnapshotManager } from './features/snapshots/autoSnapshotManager'; // Import
+import { AutoSnapshotManager } from './features/snapshots/autoSnapshotManager';
 
 export default class NovelistPlugin extends Plugin {
     settings: NovelistSettings;
@@ -28,7 +28,6 @@ export default class NovelistPlugin extends Plugin {
         // Initialize Managers
         this.logger = new Logger(this);
         
-        // FIX 1: Pass `this` (the plugin instance) instead of `this.logger`
         this.snapshotManager = new SnapshotManager(this.app, this, () => ({
             enabled: this.settings.enablePruning,
             rules: this.settings.pruningSettings
@@ -43,7 +42,7 @@ export default class NovelistPlugin extends Plugin {
 
         // --- 1. Register Views ---
         this.registerView(VIEW_TYPE_INSPECTOR, (leaf) => new InspectorView(leaf, this));
-        this.registerView(VIEW_TYPE_CORKBOARD, (leaf) => new CorkboardView(leaf));
+        this.registerView(VIEW_TYPE_CORKBOARD, (leaf) => new CorkboardView(leaf, this));
         this.registerView(VIEW_TYPE_SCRIVENINGS, (leaf) => new ScriveningsView(leaf));
         this.registerView(VIEW_TYPE_OUTLINER, (leaf) => new OutlinerView(leaf));
         this.registerView(VIEW_TYPE_BINDER, (leaf) => new BinderView(leaf, this));
@@ -95,29 +94,23 @@ export default class NovelistPlugin extends Plugin {
             callback: () => this.activateDashboard(),
         });
 
-        // New Command for Statistics
         this.addCommand({
             id: 'open-novelist-statistics',
             name: 'Open Project Statistics',
             callback: () => this.activateStatistics(),
         });
 
-        // Command to Prune Snapshots
         this.addCommand({
             id: 'novelist-prune-snapshots',
             name: 'Prune snapshots for the current file',
             checkCallback: (checking: boolean) => {
                 const file = this.app.workspace.getActiveFile();
-                // Ensure there is an active file and it's a markdown file
                 if (file && file instanceof TFile && file.extension === 'md') {
                     if (!checking) {
-                        // If the command is actually executed, run the handler
                         this.handlePruneCommand(file);
                     }
-                    // This command should be available
                     return true;
                 }
-                // This command should not be available
                 return false;
             }
         });
@@ -136,7 +129,6 @@ export default class NovelistPlugin extends Plugin {
                         item.setTitle("Open as Outliner").setIcon("list-tree").onClick(async () => await this.openOutliner(file));
                     });
                     
-                    // Add Stats option if it is a project root
                     if (projectManager.isProject(file)) {
                         menu.addItem((item) => {
                             item.setTitle("View Statistics").setIcon("bar-chart").onClick(async () => await this.openStatistics(file));
@@ -146,7 +138,6 @@ export default class NovelistPlugin extends Plugin {
             })
         );
         
-        // --- Snapshot Rename Handling ---
         this.registerEvent(
             this.app.vault.on('rename', (file, oldPath) => {
                 this.snapshotManager.handleFileRename(file, oldPath);
@@ -169,10 +160,8 @@ export default class NovelistPlugin extends Plugin {
                     }
                 }
                 
-                // Session Manager Updates
                 if (file) {
                     this.sessionManager.onFileOpen(file);
-                    // Detect current project context to set daily target
                     const project = projectManager.getProjectForFile(file);
                     this.sessionManager.updateTarget(project);
                     this.updateStatusBar();
@@ -185,7 +174,7 @@ export default class NovelistPlugin extends Plugin {
         // --- 7. Session Tracking (Status Bar) ---
         this.statusBarItem = this.addStatusBarItem();
         this.statusBarItem.addClass('novelist-status-bar');
-        this.updateStatusBar(); // Initial render
+        this.updateStatusBar();
 
         let editorChangeTimeout: NodeJS.Timeout;
         
@@ -193,19 +182,18 @@ export default class NovelistPlugin extends Plugin {
             this.app.workspace.on('editor-change', (editor, info) => {
                 if (editorChangeTimeout) clearTimeout(editorChangeTimeout);
                 
-                // Debounce the calculation
                 editorChangeTimeout = setTimeout(() => {
                     const file = info.file;
                     if (!file || file.extension !== 'md') return;
 
                     const project = projectManager.getProjectForFile(file);
-                    if (!project) return; // Only track if in a Novelist project
+                    if (!project) return;
 
                     const content = editor.getValue();
                     this.sessionManager.updateSessionCount(file, content);
                     this.updateStatusBar();
                     
-                }, 1000); // 1 second debounce
+                }, 1000);
             })
         );
 
@@ -228,7 +216,6 @@ export default class NovelistPlugin extends Plugin {
         this.statusBarItem.show();
         const { current, target, percent } = this.sessionManager.getSessionProgress();
         
-        // Simple text for MVP: "125 / 500 words (25%)"
         let text = `${current} words today`;
         if (target > 0) {
             text += ` / ${target} (${percent}%)`;
@@ -246,7 +233,6 @@ export default class NovelistPlugin extends Plugin {
     }
 
     async handlePruneCommand(file: TFile) {
-        // FIX 2: Use the correct settings properties
         if (!this.settings.enablePruning) {
             new Notice("Snapshot pruning is disabled in Novelist settings.");
             return;
@@ -255,7 +241,6 @@ export default class NovelistPlugin extends Plugin {
         new Notice(`Novelist: Pruning snapshots for ${file.basename}...`);
 
         try {
-            // FIX 2: Use the correct settings properties
             const pruningRules = this.settings.pruningSettings;
             const deletedCount = await this.snapshotManager.pruneSnapshots(file, pruningRules);
             
@@ -265,7 +250,6 @@ export default class NovelistPlugin extends Plugin {
                 new Notice(`Pruning complete. No snapshots were removed.`);
             }
 
-            // If the Inspector view is open, this will trigger it to refresh its snapshot list.
             this.app.workspace.trigger('novelist-ui-refresh');
 
         } catch (error) {
@@ -275,12 +259,10 @@ export default class NovelistPlugin extends Plugin {
     }
 
     async onunload() {
-        // Clean up automation
         if (this.autoSnapshotManager) {
             this.autoSnapshotManager.unload();
         }
 
-        // ... detach leaves ...
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_CORKBOARD);
         this.app.workspace.detachLeavesOfType(VIEW_TYPE_SCRIVENINGS);
@@ -354,7 +336,7 @@ export default class NovelistPlugin extends Plugin {
         if (leaves.length > 0) {
             leaf = leaves[0];
         } else {
-            leaf = workspace.getRightLeaf(true); // Open in split
+            leaf = workspace.getRightLeaf(true);
             await leaf.setViewState({ type: VIEW_TYPE_STATISTICS, active: true });
         }
         
@@ -364,26 +346,21 @@ export default class NovelistPlugin extends Plugin {
     async openCorkboard(folder: TFolder) {
         const corkboardLeaf = this.app.workspace.getLeaf('tab');
         
-        // Set the view to Corkboard. This ensures the view instance is created.
         await corkboardLeaf.setViewState({
             type: VIEW_TYPE_CORKBOARD,
             active: true,
             state: { folderPath: folder.path }
         });
 
-        // Conditionally create the split based on the setting
         if (this.settings.corkboardAutoSplit) {
-            // Create a partner leaf to the right.
             const partnerLeaf = this.app.workspace.createLeafBySplit(corkboardLeaf, 'vertical');
             
-            // Get the view instance and pass the partner leaf reference directly.
             const view = corkboardLeaf.view;
             if (view instanceof CorkboardView) {
                 view.setPartnerLeaf(partnerLeaf);
             }
         }
         
-        // Ensure the corkboard leaf is the active one.
         this.app.workspace.revealLeaf(corkboardLeaf);
     }
 

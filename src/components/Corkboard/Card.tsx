@@ -5,7 +5,7 @@ import { App, TFile } from 'obsidian';
 import { getMetadata, NovelistMetadata } from '../../utils/metadata';
 import { CardToolbar } from './CardToolbar';
 import * as Lucide from 'lucide-react';
-import { Move } from 'lucide-react';
+import { Move, ExternalLink } from 'lucide-react';
 
 interface CardProps {
     file: TFile;
@@ -13,9 +13,10 @@ interface CardProps {
     size: 'small' | 'medium' | 'large';
     readOnly?: boolean;
     onCardSelect: (file: TFile) => void;
+    onOpenFileRequest: (file: TFile) => void;
 }
 
-export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false, onCardSelect }) => {
+export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false, onCardSelect, onOpenFileRequest }) => {
     const [meta, setMeta] = useState<NovelistMetadata>(getMetadata(app, file));
     const [title, setTitle] = useState(file.basename);
 
@@ -83,6 +84,11 @@ export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false, o
         setMeta(prev => ({ ...prev, [key]: value }));
     };
 
+    const handleOpenClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card's onClick (selection) from firing
+        onOpenFileRequest(file);
+    };
+
     // @ts-ignore
     const IconComponent = Lucide[meta.icon.charAt(0).toUpperCase() + meta.icon.slice(1)] || Lucide.FileText;
 
@@ -96,11 +102,26 @@ export const Card: React.FC<CardProps> = ({ file, app, size, readOnly = false, o
         >
             <div className="novelist-card-accent" style={{ backgroundColor: meta.accentColor || '#ccc' }} />
 
-            {!readOnly && (
-                <div className="novelist-drag-handle-corner" {...attributes} {...listeners} title="Drag to reorder">
-                    <Move size={14} />
-                </div>
-            )}
+            <div className="novelist-card-top-right-actions">
+                <button 
+                    className="novelist-card-action-btn" 
+                    title="Open note" 
+                    onClick={handleOpenClick}
+                    onMouseDown={(e) => e.stopPropagation()}
+                >
+                    <ExternalLink size={14} />
+                </button>
+                {!readOnly && (
+                    <div 
+                        className="novelist-card-action-btn novelist-drag-handle" 
+                        {...attributes} 
+                        {...listeners} 
+                        title="Drag to reorder"
+                    >
+                        <Move size={14} />
+                    </div>
+                )}
+            </div>
 
             <div className="novelist-card-header">
                 {/* @ts-ignore */}

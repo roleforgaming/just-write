@@ -3,6 +3,7 @@ import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Board } from '../components/Corkboard/Board';
 import { ProjectManager } from '../utils/projectManager';
+import NovelistPlugin from '../main';
 
 export const VIEW_TYPE_CORKBOARD = "novelist-corkboard-view";
 
@@ -10,10 +11,12 @@ export class CorkboardView extends ItemView {
     root: Root | null = null;
     currentFolder: TFolder | null = null;
     isProjectContext: boolean = true;
-    partnerLeaf: WorkspaceLeaf | null = null; // Stores the actual leaf instance
+    partnerLeaf: WorkspaceLeaf | null = null; // Stores the leaf from auto-split
+    plugin: NovelistPlugin; // Reference to the main plugin
 
-    constructor(leaf: WorkspaceLeaf) {
+    constructor(leaf: WorkspaceLeaf, plugin: NovelistPlugin) {
         super(leaf);
+        this.plugin = plugin;
     }
 
     getViewType() { return VIEW_TYPE_CORKBOARD; }
@@ -25,7 +28,6 @@ export class CorkboardView extends ItemView {
     }
 
     async setState(state: any, result: any): Promise<void> {
-        // No need to process partnerLeafId from state anymore, it's set via setPartnerLeaf()
         if (state.folderPath) {
             const abstractFile = this.app.vault.getAbstractFileByPath(state.folderPath);
             if (abstractFile instanceof TFolder) {
@@ -42,38 +44,52 @@ export class CorkboardView extends ItemView {
         this.root = createRoot(this.contentEl);
     }
     
-    /**
-     * Checks if a WorkspaceLeaf is still valid and part of the workspace layout.
-     * @param leaf The leaf to check.
-     * @returns true if the leaf is valid, false otherwise.
-     */
     private isLeafValid(leaf: WorkspaceLeaf | null): boolean {
-        if (!leaf) {
-            return false;
-        }
-        // A leaf is considered detached (closed) if its container element is no longer part of the document's DOM.
-        return leaf.view.containerEl.isConnected;
+        if (!leaf) return false;
+        // Check if attached
+        if (!leaf.view.containerEl.isConnected) return false;
+        // Check if pinned - we generally shouldn't reuse a partner leaf if the user pinned it manually.
+        if (leaf.getViewState().pinned) return false;
+        
+        return true;
     }
 
     handleCardSelect = (file: TFile) => {
-        // Trigger inspector update for other views that might be listening
         (this.app.workspace as any).trigger('novelist:select-file', file);
-    
-        let leafToOpenIn = this.partnerLeaf;
-    
-        // 1. Check if the existing partner leaf reference is still valid/attached
-        if (!this.isLeafValid(leafToOpenIn)) {
-            // If invalid, discard the old reference so we fall back to the "new tab" logic
-            this.partnerLeaf = null;
-            leafToOpenIn = null;
+    };
+
+    handleOpenFileRequest = (file: TFile) => {
+        // 1. Check if the dedicated partner leaf exists, is valid, AND is not pinned.
+        if (this.isLeafValid(this.partnerLeaf)) {
+            this.partnerLeaf!.openFile(file);
+            return;
         }
 
-        // 2. If we have a valid partner leaf, use it. Otherwise, fall back to a new tab.
-        if (leafToOpenIn) {
-            leafToOpenIn.openFile(file);
-        } else {
-            // This case handles both when the setting is off, and when the user has closed the partner pane.
-            this.app.workspace.getLeaf('tab').openFile(file);
+        // 2. If no partner leaf, find any other markdown pane that isn't this corkboard AND is not pinned.
+        const allLeaves = this.app.workspace.getLeavesOfType('markdown');
+        const otherLeaf = allLeaves.find(leaf => {
+            if (leaf === this.leaf) return false;
+            
+            // Crucial Fix: Check if the leaf is pinned.
+            const state = leaf.getViewState();
+            if (state.pinned) return false;
+            
+            return true;
+        });
+
+        if (otherLeaf) {
+            otherLeaf.openFile(file);
+            return;
+        }
+
+        // 3. If no other pane exists, create a new split.
+        // Use createLeafBySplit on THIS leaf to ensure the split happens relative to the Corkboard.
+        const newLeaf = this.app.workspace.createLeafBySplit(this.leaf, 'vertical');
+        newLeaf.openFile(file);
+        
+        // If auto-split is enabled, this new leaf becomes the partner for future clicks.
+        if (this.plugin.settings.corkboardAutoSplit) {
+            this.partnerLeaf = newLeaf;
         }
     };
 
@@ -90,7 +106,12 @@ export class CorkboardView extends ItemView {
         }
 
         this.root?.render(
-            <Board app={this.app} folder={this.currentFolder} onCardSelect={this.handleCardSelect} />
+            <Board 
+                app={this.app} 
+                folder={this.currentFolder} 
+                onCardSelect={this.handleCardSelect}
+                onOpenFileRequest={this.handleOpenFileRequest}
+            />
         );
     }
 
