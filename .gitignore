@@ -27,3 +27,7 @@ Thumbs.db
 # Package manager
 package-lock.json
 yarn.lock
+
+# Other
+md.md
+project.md
