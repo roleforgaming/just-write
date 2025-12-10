@@ -1,6 +1,6 @@
 import { ProjectManager, PROJECT_MARKER_FILE, PROJECT_TYPE_KEY } from '../projectManager';
 // The import below picks up the MOCKED versions because of the jest.mock call
-import { App, TFile, TFolder, TAbstractFile, Notice, normalizePath } from 'obsidian';
+import { App, TFile, TFolder, Notice } from 'obsidian';
 
 // ----------------------------------------------------------------------------
 // Jest Mocks
