@@ -160,19 +160,13 @@ ${fileContent}`;
         this.logger.log(`Restoring snapshot ${snapshot.path} to ${fileToRestore.path}`);
 
         try {
-            // 1. Backup current state before overwriting
             await this.createSnapshot(fileToRestore, 'Pre-Restore Auto-Backup');
-
-            // 2. Read the snapshot content
             const snapContent = await this.app.vault.adapter.read(snapshot.path);
-
-            // 3. Extract body from snapshot (Remove FM from snapshot string)
-            // This regex assumes standard YAML block format
-            const snapshotBody = snapContent.replace(/^---\n[\s\S]*?\n---\n\n?/, '');
-
-            // 4. Update the live file with the snapshot body, KEEPING current metadata
+            
+            // ROBUST STRIP: Handle BOM (\ufeff) and leading whitespace to ensure FM is matched
+            const snapshotBody = snapContent.replace(/^(?:\ufeff)?\s*---\s*[\r\n]+[\s\S]*?[\r\n]+---\s*[\r\n]*/, '');
+            
             await updateNoteBody(this.app, fileToRestore, snapshotBody);
-
             this.logger.log(`Restoration complete.`);
         } catch (e) {
             this.logger.error("Failed to restore snapshot", e);
