@@ -59,3 +59,27 @@ export async function updateMetadata(app: App, file: TFile, changes: Partial<Nov
         }
     });
 }
+
+/**
+ * Safely updates the body of a note while preserving its CURRENT frontmatter.
+ * This prevents overwriting metadata changes (like Status/Rank) that happened
+ * while the body was being edited.
+ */
+export async function updateNoteBody(app: App, file: TFile, newBody: string): Promise<void> {
+    const currentContent = await app.vault.read(file);
+    const cache = app.metadataCache.getFileCache(file);
+
+    let finalContent = newBody;
+
+    if (cache?.frontmatterPosition) {
+        // Extract the exact frontmatter block from the current live file
+        const fmEnd = cache.frontmatterPosition.end.offset;
+        const currentFrontmatter = currentContent.substring(0, fmEnd + 1);
+        
+        // Combine current frontmatter with the new body
+        // Ensure a newline separates them if the body doesn't start with one
+        finalContent = `${currentFrontmatter}\n${newBody.startsWith('\n') ? newBody.substring(1) : newBody}`;
+    }
+
+    await app.vault.modify(file, finalContent);
+}
