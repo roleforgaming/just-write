@@ -6,7 +6,8 @@ import { App as ObsidianApp, TFile as ObsidianTFile } from 'obsidian';
 describe('Metadata Utilities', () => {
     let app: App;
     let file: TFile;
-    let mockVaultModify: jest.Mock;
+    // mockVaultProcess will capture the callback function passed to vault.process
+    let mockVaultProcess: jest.Mock;
 
     beforeEach(() => {
         app = new App();
@@ -24,9 +25,17 @@ describe('Metadata Utilities', () => {
             }),
         };
 
-        mockVaultModify = jest.fn();
-        (app.vault as any).modify = mockVaultModify;
-        app.vault.read = jest.fn();
+        // MOCK vault.process
+        mockVaultProcess = jest.fn((_f, _callback) => {
+            // We simulate the process by providing current file content 
+            // and returning what the callback returns.
+            // By default, let's assume empty file if not mocked otherwise.
+            return Promise.resolve(); 
+        });
+        (app.vault as any).process = mockVaultProcess;
+        
+        // modify is likely no longer used by updateNoteBody, but good to keep mocked just in case
+        (app.vault as any).modify = jest.fn();
     });
 
     describe('getMetadata', () => {
@@ -123,66 +132,62 @@ describe('Metadata Utilities', () => {
 
     describe('updateNoteBody', () => {
         test('Happy Path: Should preserve existing frontmatter and update body', async () => {
-            // String length: 3(---) + 1(\n) + 7(rank: 1) + 1(\n) + 3(---) = 15 chars.
-            // Indices: 0 to 14. Last char is at index 14.
             const existingContent = "---\nrank: 1\n---\nOld Body Content";
             const newBody = "New Body Content";
-            
-            (app.vault.read as jest.Mock).mockResolvedValue(existingContent);
-            
-            // Corrected offset to 14
-            ((app as any).metadataCache.getFileCache as jest.Mock).mockReturnValue({
-                frontmatterPosition: { end: { offset: 14 } }
+
+            // When process is called, we execute the callback with existingContent
+            mockVaultProcess.mockImplementation(async (f, callback) => {
+                const result = callback(existingContent);
+                // In a real mock we might check if result matches expectation
+                return result; 
             });
 
             await updateNoteBody(app as unknown as ObsidianApp, file as unknown as ObsidianTFile, newBody);
 
-            const expectedContent = "---\nrank: 1\n---\nNew Body Content";
-            expect(mockVaultModify).toHaveBeenCalledWith(file, expectedContent);
+            // We verify that the result of the callback was the correct combination
+            const calls = mockVaultProcess.mock.calls;
+            const callback = calls[0][1];
+            const result = callback(existingContent);
+
+            expect(result).toBe("---\nrank: 1\n---\nNew Body Content");
         });
 
-        test('Formatting: Should ensure newline separation if body lacks it', async () => {
-            // String length: 3(---) + 1(\n) + 8(key: val) + 1(\n) + 3(---) = 16 chars.
-            // Indices: 0 to 15. Last char is at index 15.
+        test('Formatting: Should ensure newline separation', async () => {
             const existingContent = "---\nkey: val\n---"; 
             const newBody = "Start of text"; 
             
-            (app.vault.read as jest.Mock).mockResolvedValue(existingContent);
-            // Corrected offset to 15
-            ((app as any).metadataCache.getFileCache as jest.Mock).mockReturnValue({
-                frontmatterPosition: { end: { offset: 15 } }
+            mockVaultProcess.mockImplementation(async (f, callback) => {
+                 return callback(existingContent);
             });
 
             await updateNoteBody(app as unknown as ObsidianApp, file as unknown as ObsidianTFile, newBody);
 
-            expect(mockVaultModify).toHaveBeenCalledWith(file, "---\nkey: val\n---\nStart of text");
+            const callback = mockVaultProcess.mock.calls[0][1];
+            expect(callback(existingContent)).toBe("---\nkey: val\n---\nStart of text");
         });
 
-        test('Edge Case: Should remove leading newline from newBody to prevent double spacing', async () => {
+        test('Edge Case: Should strip leading newlines from newBody', async () => {
             const existingContent = "---\nkey: val\n---"; 
-            const newBody = "\nStart of text"; 
+            const newBody = "\n\nStart of text"; 
             
-            (app.vault.read as jest.Mock).mockResolvedValue(existingContent);
-            // Corrected offset to 15
-            ((app as any).metadataCache.getFileCache as jest.Mock).mockReturnValue({
-                frontmatterPosition: { end: { offset: 15 } }
-            });
+            mockVaultProcess.mockImplementation(async (f, callback) => callback(existingContent));
 
             await updateNoteBody(app as unknown as ObsidianApp, file as unknown as ObsidianTFile, newBody);
 
-            expect(mockVaultModify).toHaveBeenCalledWith(file, "---\nkey: val\n---\nStart of text");
+            const callback = mockVaultProcess.mock.calls[0][1];
+            expect(callback(existingContent)).toBe("---\nkey: val\n---\nStart of text");
         });
 
         test('No Frontmatter: Should replace entire file content', async () => {
             const existingContent = "Just some text";
             const newBody = "New text";
             
-            (app.vault.read as jest.Mock).mockResolvedValue(existingContent);
-            ((app as any).metadataCache.getFileCache as jest.Mock).mockReturnValue({});
+            mockVaultProcess.mockImplementation(async (f, callback) => callback(existingContent));
 
             await updateNoteBody(app as unknown as ObsidianApp, file as unknown as ObsidianTFile, newBody);
 
-            expect(mockVaultModify).toHaveBeenCalledWith(file, "New text");
+            const callback = mockVaultProcess.mock.calls[0][1];
+            expect(callback(existingContent)).toBe("New text");
         });
     });
 });
