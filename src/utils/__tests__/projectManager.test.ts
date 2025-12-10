@@ -104,7 +104,7 @@ describe('ProjectManager', () => {
                     if (fileSystem.has(path)) throw new Error('Folder already exists');
                     return createMockPath(path, true);
                 }),
-                create: jest.fn(async (path: string, content: string) => {
+                create: jest.fn(async (path: string, _content: string) => {
                     if (fileSystem.has(path)) throw new Error('File already exists');
                     return createMockPath(path, false);
                 }),
