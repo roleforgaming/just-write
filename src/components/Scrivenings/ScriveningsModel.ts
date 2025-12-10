@@ -1,6 +1,7 @@
 import { App, TFile, TFolder, Notice } from 'obsidian';
 import { getRank } from '../../utils/metadata';
 import matter from 'gray-matter';
+import { updateNoteBody } from 'src/utils/metadata';
 
 export interface FileSection {
     file: TFile;
@@ -59,13 +60,10 @@ export class ScriveningsModel {
 
     async save(fullText: string) {
         // ROBUST SPLIT LOGIC:
-        // Use Regex to find the marker <!-- SC_BREAK -->
-        // (?:\r?\n)* matches zero or more newlines before and after.
         const parts = fullText.split(/(?:\r?\n)*<!-- SC_BREAK -->(?:\r?\n)*/);
 
-        // Safety Check
         if (parts.length !== this.sections.length) {
-            new Notice("Scrivenings Sync Warning: Section count mismatch. Save aborted to protect data.");
+            new Notice("Scrivenings Sync Warning: Section count mismatch. Save aborted.");
             console.error("Scrivenings mismatch:", { expected: this.sections.length, found: parts.length });
             return;
         }
@@ -73,15 +71,15 @@ export class ScriveningsModel {
         const promises = this.sections.map(async (section, index) => {
             const newContent = parts[index];
             
-            // Only write to disk if content actually changed
             if (newContent !== section.content) {
-                // Recombine the preserved frontmatter (with comments) + new body
-                const fileData = section.frontmatter + newContent;
-                await this.app.vault.modify(section.file, fileData);
+                // REFACTOR: Use updateNoteBody to preserve live frontmatter
+                // This prevents reverting metadata if it changed in the background
+                await updateNoteBody(this.app, section.file, newContent);
+                
                 section.content = newContent; // Update local cache
             }
         });
-
+        
         await Promise.all(promises);
     }
 }
