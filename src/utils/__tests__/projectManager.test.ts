@@ -259,14 +259,38 @@ describe('ProjectManager', () => {
     });
 
     describe('renameProject', () => {
-        it('should rename project folder and update index title', async () => {
-            const project = createMockPath('OldName', true);
-            const folderNote = createMockPath('OldName/index.md', false);
+        it('should rename project folder and update the folder note\'s frontmatter title', async () => {
+            const oldName = 'OldName';
+            const newName = 'NewName';
+            const project = createMockPath(oldName, true);
+            // Create the folder note file that ProjectManager must update
+            const folderNote = createMockPath(`${oldName}/index.md`, false);
 
-            await manager.renameProject(project as any, 'NewName');
+            let capturedFrontMatterCallback: (fm: any) => void = () => {};
+            
+            // Temporarily override the mock to capture the callback
+            app.fileManager.processFrontMatter.mockImplementation(async (file: any, cb: (fm: any) => void) => {
+                if (file === folderNote) {
+                    capturedFrontMatterCallback = cb;
+                }
+            });
 
-            expect(app.fileManager.renameFile).toHaveBeenCalledWith(project, 'NewName');
+            await manager.renameProject(project as any, newName);
+
+            // 1. Verify folder rename
+            expect(app.fileManager.renameFile).toHaveBeenCalledWith(project, newName);
+
+            // 2. Verify frontmatter processing was initiated
             expect(app.fileManager.processFrontMatter).toHaveBeenCalledWith(folderNote, expect.any(Function));
+
+            // 3. Verify the frontmatter update logic by running the captured callback
+            const mockFrontMatter = { title: oldName, type: 'project' }; // Start with old title
+            
+            // Execute the function that *should* update the frontmatter
+            capturedFrontMatterCallback(mockFrontMatter);
+
+            // Assert that the title field was updated to the new name
+            expect(mockFrontMatter.title).toBe(newName);
         });
     });
 });

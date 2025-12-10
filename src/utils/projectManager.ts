@@ -21,7 +21,6 @@ export class ProjectManager {
             c => c.name === PROJECT_MARKER_FILE && c instanceof TFile
         ) as TFile;
         if (!markerFile) return false;
-        
         const cache = this.app.metadataCache.getFileCache(markerFile);
         return cache?.frontmatter?.type === PROJECT_TYPE_KEY;
     }
@@ -31,12 +30,10 @@ export class ProjectManager {
             c => c.name === PROJECT_MARKER_FILE && c instanceof TFile
         ) as TFile;
         if (!markerFile) return false;
-
         const cache = this.app.metadataCache.getFileCache(markerFile);
         if (cache?.frontmatter?.type === PROJECT_TYPE_KEY) {
             return true;
         }
-
         try {
             const content = await this.app.vault.read(markerFile);
             const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -89,7 +86,6 @@ export class ProjectManager {
 
     async createProject(projectName: string, structure: string, parentPath: string = ""): Promise<TFolder | null> {
         const rootPath = parentPath ? normalizePath(`${parentPath}/${projectName}`) : projectName;
-
         try {
             const existingFolder = this.app.vault.getAbstractFileByPath(rootPath);
             if (existingFolder) {
@@ -103,8 +99,8 @@ export class ProjectManager {
 type: ${PROJECT_TYPE_KEY}
 title: ${projectName}
 status: Planning
-author: 
-deadline: 
+author:
+deadline:
 targetWordCount: 50000
 targetSessionCount: 0
 ---
@@ -117,10 +113,11 @@ Project notes and synopsis go here.
             const paths = structure.split('\n')
                 .map(p => p.trim())
                 .filter(p => p.length > 0);
-            
+
             if (!paths.includes('Trash')) {
                 paths.push('Trash');
             }
+
             paths.sort();
 
             for (const relPath of paths) {
@@ -130,12 +127,10 @@ Project notes and synopsis go here.
                     try {
                         await this.app.vault.createFolder(fullPath);
                     } catch (err) {
-                        // If direct creation fails (e.g. nested path), try ensuring existence recursively
                         await this.ensureFolderExists(fullPath);
                     }
                 }
             }
-
             new Notice(`Project "${projectName}" created!`);
             return rootFolder;
         } catch (error) {
@@ -217,7 +212,6 @@ Project notes and synopsis go here.
             }
 
             let targetPath = project.path;
-            
             if (item instanceof TFile && item.extension === 'md') {
                 const cache = this.app.metadataCache.getFileCache(item);
                 if (cache?.frontmatter?.originalPath) {
@@ -226,7 +220,6 @@ Project notes and synopsis go here.
                         targetPath = originalFolder.path;
                     }
                 }
-                // Remove the metadata marker
                 await this.app.fileManager.processFrontMatter(item, (fm) => {
                     delete fm.originalPath;
                 });
@@ -235,7 +228,7 @@ Project notes and synopsis go here.
             let newName = item.name;
             let counter = 1;
             while (this.app.vault.getAbstractFileByPath(`${targetPath}/${newName}`)) {
-                 if (item instanceof TFile) {
+                if (item instanceof TFile) {
                     newName = `${item.basename} (${counter}).${item.extension}`;
                 } else {
                     newName = `${item.name} (${counter})`;
@@ -259,7 +252,6 @@ Project notes and synopsis go here.
                 if (found) target = found;
                 else return;
             }
-
             const children = [...target.children];
             for (const child of children) {
                 await this.app.vault.delete(child, true);
@@ -314,7 +306,6 @@ notes: ""
             let counter = 1;
             const extension = type === 'file' ? '.md' : '';
 
-            // Naming collision check
             while (this.app.vault.getAbstractFileByPath(`${parentFolder.path}/${name}${extension}`)) {
                 name = `${baseName} ${counter}`;
                 counter++;
@@ -331,20 +322,19 @@ notes: ""
                     const r = getRank(this.app, s as TFile);
                     if (r < 999999 && r > maxRank) maxRank = r;
                 });
-                const newRank = maxRank + 10;
 
+                const newRank = maxRank + 10;
                 let content = '';
                 const project = this.getProjectForFile(parentFolder);
-                
+
                 if (project) {
                     const meta = this.getProjectMetadata(project);
                     if (meta) {
                         const mappings: FolderMapping[] = meta.mappings || [];
                         const templates: DocumentTemplate[] = meta.templates || [];
-                        
                         const mapping = mappings.find(m => m.folderName === parentFolder.name);
+
                         let templateToUse: DocumentTemplate | undefined;
-                        
                         if (mapping) {
                             templateToUse = templates.find(t => t.name === mapping.templateName);
                         }
@@ -386,8 +376,8 @@ notes: ""
                 await this.app.vault.create(fullPath, content);
             }
         } catch (error) {
-             new Notice(`Failed to create ${type}: ${error instanceof Error ? error.message : String(error)}`);
-             console.error(error);
+            new Notice(`Failed to create ${type}: ${error instanceof Error ? error.message : String(error)}`);
+            console.error(error);
         }
     }
 
@@ -433,10 +423,9 @@ notes: ""
     getProjectMetadata(folder: TFolder) {
         const marker = folder.children.find(c => c.name === 'project.md') as TFile;
         if (!marker) return null;
-        
         const cache = this.app.metadataCache.getFileCache(marker);
         const fm = cache?.frontmatter || {};
-        
+
         return {
             name: folder.name,
             path: folder.path,
@@ -496,24 +485,30 @@ notes: ""
                 if (data.cursorPositions !== undefined) fm.cursorPositions = data.cursorPositions;
             });
         } catch (error) {
-             new Notice(`Failed to update project metadata: ${error instanceof Error ? error.message : String(error)}`);
-             console.error(error);
+            new Notice(`Failed to update project metadata: ${error instanceof Error ? error.message : String(error)}`);
+            console.error(error);
         }
     }
 
     async renameProject(folder: TFolder, newName: string) {
         if (folder.name === newName) return;
-        
         try {
-            // ensure path is normalized and clean
             const parentPath = folder.parent?.path === '/' ? '' : (folder.parent?.path || '');
             const newPath = normalizePath(`${parentPath}/${newName}`);
+            
             const folderNote = this.getFolderNote(folder);
+            const projectMarker = folder.children.find(c => c.name === PROJECT_MARKER_FILE) as TFile;
 
             await this.app.fileManager.renameFile(folder, newPath);
-            
+
             if (folderNote) {
                 await this.app.fileManager.processFrontMatter(folderNote, (fm) => {
+                    fm.title = newName;
+                });
+            }
+
+            if (projectMarker) {
+                await this.app.fileManager.processFrontMatter(projectMarker, (fm) => {
                     fm.title = newName;
                 });
             }
