@@ -26,7 +26,6 @@ export function getMetadata(app: App, file: TFile): NovelistMetadata {
         icon: fm.icon || "file-text",
         accentColor: fm.accentColor || "",
         notes: fm.notes || "",
-        // Preserve optional fields if they exist
         targetWordCount: fm.targetWordCount,
         targetSessionCount: fm.targetSessionCount,
         targetDeadline: fm.targetDeadline,
@@ -40,19 +39,9 @@ export function getRank(app: App, file: TFile): number {
     return typeof cache?.frontmatter?.rank === 'number' ? cache.frontmatter.rank : 999999;
 }
 
-/**
- * Safely updates the metadata for a file using Obsidian's atomic frontmatter API.
- * This ensures that the body of the note is never modified or deleted during updates.
- * 
- * @param app - The Obsidian App instance
- * @param file - The file to update
- * @param changes - An object containing only the fields to be updated
- */
 export async function updateMetadata(app: App, file: TFile, changes: Partial<NovelistMetadata>): Promise<void> {
     await app.fileManager.processFrontMatter(file, (frontmatter) => {
         for (const [key, value] of Object.entries(changes)) {
-            // Explicitly check for undefined to allow clearing values with null/empty string if intended,
-            // but ignore fields not present in the changes object.
             if (value !== undefined) {
                 frontmatter[key] = value;
             }
@@ -62,24 +51,36 @@ export async function updateMetadata(app: App, file: TFile, changes: Partial<Nov
 
 /**
  * Safely updates the body of a note while preserving its CURRENT frontmatter.
- * This prevents overwriting metadata changes (like Status/Rank) that happened
- * while the body was being edited.
+ * Uses vault.process for atomic updates to avoid race conditions.
+ * 
+ * @param app - The Obsidian App instance
+ * @param file - The file to update
+ * @param newBody - The new body content (should NOT contain frontmatter)
  */
 export async function updateNoteBody(app: App, file: TFile, newBody: string): Promise<void> {
-    const currentContent = await app.vault.read(file);
-    const cache = app.metadataCache.getFileCache(file);
-
-    let finalContent = newBody;
-
-    if (cache?.frontmatterPosition) {
-        // Extract the exact frontmatter block from the current live file
-        const fmEnd = cache.frontmatterPosition.end.offset;
-        const currentFrontmatter = currentContent.substring(0, fmEnd + 1);
+    await app.vault.process(file, (data) => {
+        // ROBUST REGEX:
+        // 1. (?:\ufeff)? matches optional Byte Order Mark
+        // 2. \s* matches optional leading whitespace
+        // 3. --- matches the start fence
+        // 4. [\r\n]+ matches the newline(s)
+        // 5. ([\s\S]*?) captures the content
+        // 6. [\r\n]+ matches the newline(s) before end fence
+        // 7. --- matches end fence
+        // 8. \s* matches trailing spaces/newline
+        const fmRegex = /^(?:\ufeff)?\s*---\s*[\r\n]+([\s\S]*?)[\r\n]+---\s*[\r\n]*/;
         
-        // Combine current frontmatter with the new body
-        // Ensure a newline separates them if the body doesn't start with one
-        finalContent = `${currentFrontmatter}\n${newBody.startsWith('\n') ? newBody.substring(1) : newBody}`;
-    }
+        const match = data.match(fmRegex);
+        
+        // Strip any leading whitespace/newlines from the new body to prevent gaps
+        const cleanBody = newBody.replace(/^\s+/, '');
 
-    await app.vault.modify(file, finalContent);
+        if (match) {
+            const currentFrontmatter = match[0].trim(); // Keep the fence and content
+            return `${currentFrontmatter}\n${cleanBody}`;
+        } else {
+            // If no frontmatter exists in the live file, just return the new body
+            return cleanBody;
+        }
+    });
 }
