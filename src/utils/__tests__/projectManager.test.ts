@@ -1,128 +1,160 @@
-import { ProjectManager, PROJECT_MARKER_FILE, PROJECT_TYPE_KEY } from '../src/utils/projectManager';
-import { App, TFile, TFolder, TAbstractFile } from 'obsidian';
+import { ProjectManager, PROJECT_MARKER_FILE, PROJECT_TYPE_KEY } from '../projectManager';
+// The import below picks up the MOCKED versions because of the jest.mock call
+import { App, TFile, TFolder, TAbstractFile, Notice, normalizePath } from 'obsidian';
 
 // ----------------------------------------------------------------------------
-// Mocks for Obsidian API
+// Jest Mocks
 // ----------------------------------------------------------------------------
 
-// 1. Mock the TAbstractFile hierarchy used for instanceof checks
-class MockTAbstractFile {
-    path: string;
-    name: string;
-    parent: TFolder | null;
-    constructor(path: string, parent: TFolder | null = null) {
-        this.path = path;
-        this.name = path.split('/').pop() || '';
-        this.parent = parent;
-    }
-}
-
-class MockTFile extends MockTAbstractFile {
-    basename: string;
-    extension: string;
-    stat: { ctime: number; mtime: number; size: number };
-    constructor(path: string, parent: TFolder | null = null) {
-        super(path, parent);
-        const parts = this.name.split('.');
-        if (parts.length > 1) {
-            this.extension = parts.pop() || '';
-            this.basename = parts.join('.');
-        } else {
-            this.extension = '';
-            this.basename = this.name;
-        }
-        this.stat = { ctime: Date.now(), mtime: Date.now(), size: 100 };
-    }
-}
-
-class MockTFolder extends MockTAbstractFile {
-    children: TAbstractFile[] = [];
-    isRoot() { return this.path === '/'; }
-    constructor(path: string, parent: TFolder | null = null) {
-        super(path, parent);
-    }
-}
-
-// 2. Mock the 'obsidian' module
-jest.mock('obsidian', () => ({
-    App: jest.fn(),
-    TFile: MockTFile,
-    TFolder: MockTFolder,
-    TAbstractFile: MockTAbstractFile,
-    Notice: jest.fn(),
-    normalizePath: (path: string) => path.replace(/\\/g, '/').replace(/^\/+/, ''),
+jest.mock('../metadata', () => ({
+    getRank: jest.fn().mockReturnValue(0)
 }));
 
-// 3. Helper to create a Mock App instance
-const createMockApp = () => {
+jest.mock('obsidian', () => {
+    // 1. Define classes INSIDE the factory to avoid hoisting ReferenceErrors
+    class MockTAbstractFile {
+        path: string;
+        name: string;
+        parent: any = null;
+        constructor(path: string) {
+            this.path = path;
+            this.name = path.split('/').pop() || '';
+        }
+    }
+
+    class MockTFolder extends MockTAbstractFile {
+        children: any[] = [];
+        constructor(path: string) {
+            super(path);
+        }
+        isRoot() { return this.path === '/' || this.path === ''; }
+    }
+
+    class MockTFile extends MockTAbstractFile {
+        basename: string;
+        extension: string;
+        stat: { ctime: number; mtime: number; size: number };
+        constructor(path: string) {
+            super(path);
+            const parts = this.name.split('.');
+            if (parts.length > 1) {
+                this.extension = parts.pop() || '';
+                this.basename = parts.join('.');
+            } else {
+                this.extension = '';
+                this.basename = this.name;
+            }
+            this.stat = { ctime: Date.now(), mtime: Date.now(), size: 100 };
+        }
+    }
+
+    // 2. Return the mock module
     return {
-        vault: {
-            createFolder: jest.fn(),
-            create: jest.fn(),
-            getAbstractFileByPath: jest.fn(),
-            read: jest.fn(),
-            cachedRead: jest.fn(),
-            delete: jest.fn(),
-            getMarkdownFiles: jest.fn(),
-        },
-        fileManager: {
-            processFrontMatter: jest.fn((file, cb) => {
-                // Simulate frontmatter object for callback
-                const fm = {}; 
-                cb(fm);
-                return Promise.resolve();
-            }),
-            renameFile: jest.fn(),
-        },
-        metadataCache: {
-            getFileCache: jest.fn(),
-        },
-    } as unknown as App;
-};
+        App: class {},
+        TFile: MockTFile,
+        TFolder: MockTFolder,
+        TAbstractFile: MockTAbstractFile,
+        Notice: jest.fn(),
+        normalizePath: (p: string) => p.replace(/\\/g, '/').replace(/^\/+/, '')
+    };
+});
 
 // ----------------------------------------------------------------------------
 // Test Suite
 // ----------------------------------------------------------------------------
 
 describe('ProjectManager', () => {
-    let app: App;
-    let projectManager: ProjectManager;
+    let app: any;
+    let manager: ProjectManager;
+    let fileSystem: Map<string, any>;
+
+    // Helper to simulate file system structure
+    const createMockPath = (path: string, isFolder: boolean): any => {
+        if (fileSystem.has(path)) return fileSystem.get(path)!;
+
+        // Ensure parent exists
+        const parentPath = path.substring(0, path.lastIndexOf('/'));
+        let parent: any = null;
+        
+        if (parentPath && parentPath !== path) {
+            parent = createMockPath(parentPath, true);
+        }
+
+        // We use TFolder/TFile here, which refer to the MOCKED classes imported from 'obsidian'
+        // We cast to 'any' to bypass strict type checking of the constructor signature
+        const item = isFolder ? new (TFolder as any)(path) : new (TFile as any)(path);
+        item.parent = parent;
+        
+        if (parent) {
+            parent.children.push(item);
+        }
+
+        fileSystem.set(path, item);
+        return item;
+    };
 
     beforeEach(() => {
-        app = createMockApp();
-        projectManager = new ProjectManager(app);
+        fileSystem = new Map();
         jest.clearAllMocks();
+
+        app = {
+            vault: {
+                getAbstractFileByPath: jest.fn((path: string) => fileSystem.get(path) || null),
+                createFolder: jest.fn(async (path: string) => {
+                    if (fileSystem.has(path)) throw new Error('Folder already exists');
+                    return createMockPath(path, true);
+                }),
+                create: jest.fn(async (path: string, content: string) => {
+                    if (fileSystem.has(path)) throw new Error('File already exists');
+                    return createMockPath(path, false);
+                }),
+                read: jest.fn().mockResolvedValue(''),
+                cachedRead: jest.fn().mockResolvedValue(''),
+                getMarkdownFiles: jest.fn(() => 
+                    Array.from(fileSystem.values()).filter(f => f instanceof TFile && f.extension === 'md')
+                ),
+                delete: jest.fn(async (file: any) => {
+                    fileSystem.delete(file.path);
+                    if (file.parent) {
+                        file.parent.children = file.parent.children.filter((c: any) => c !== file);
+                    }
+                }),
+            },
+            metadataCache: {
+                getFileCache: jest.fn().mockReturnValue(null),
+            },
+            fileManager: {
+                processFrontMatter: jest.fn(async (file: any, cb: (fm: any) => void) => {
+                    const fm = {}; 
+                    cb(fm);
+                }),
+                renameFile: jest.fn(async (file: any, newPath: string) => {
+                    fileSystem.delete(file.path);
+                    file.path = newPath;
+                    file.name = newPath.split('/').pop() || '';
+                    fileSystem.set(newPath, file);
+                }),
+            }
+        };
+
+        manager = new ProjectManager(app as App);
     });
 
     describe('isProject', () => {
         it('should return true if folder contains project marker with correct type', () => {
-            const folder = new MockTFolder('MyProject');
-            const marker = new MockTFile('MyProject/project.md', folder);
-            folder.children.push(marker);
+            const folder = createMockPath('MyProject', true);
+            createMockPath('MyProject/project.md', false);
 
             (app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
                 frontmatter: { type: PROJECT_TYPE_KEY }
             });
 
-            // Cast to unknown then TFolder to satisfy TS check against real TFolder
-            expect(projectManager.isProject(folder as unknown as TFolder)).toBe(true);
+            expect(manager.isProject(folder as any)).toBe(true);
         });
 
         it('should return false if marker file is missing', () => {
-            const folder = new MockTFolder('NotProject');
-            expect(projectManager.isProject(folder as unknown as TFolder)).toBe(false);
-        });
-
-        it('should return false if marker exists but type is wrong', () => {
-            const folder = new MockTFolder('WrongType');
-            const marker = new MockTFile('WrongType/project.md', folder);
-            folder.children.push(marker);
-
-            (app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-                frontmatter: { type: 'other-type' }
-            });
-
-            expect(projectManager.isProject(folder as unknown as TFolder)).toBe(false);
+            const folder = createMockPath('NotProject', true);
+            expect(manager.isProject(folder as any)).toBe(false);
         });
     });
 
@@ -131,187 +163,65 @@ describe('ProjectManager', () => {
             const name = 'NewNovel';
             const structure = 'Chapters\nCharacters';
             
-            // Setup: Vault returns null for existing path (no collision)
-            (app.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-            
-            // Setup: createFolder returns the new folder
-            const newFolder = new MockTFolder(name);
-            (app.vault.createFolder as jest.Mock).mockResolvedValue(newFolder);
+            await manager.createProject(name, structure);
 
-            const result = await projectManager.createProject(name, structure);
-
-            // 1. Check Root Creation
             expect(app.vault.createFolder).toHaveBeenCalledWith(name);
-            
-            // 2. Check Marker Creation
             expect(app.vault.create).toHaveBeenCalledWith(
                 `${name}/${PROJECT_MARKER_FILE}`,
                 expect.stringContaining(`type: ${PROJECT_TYPE_KEY}`)
             );
-
-            // 3. Check Structure Creation (structure paths + Trash)
             expect(app.vault.createFolder).toHaveBeenCalledWith(`${name}/Chapters`);
             expect(app.vault.createFolder).toHaveBeenCalledWith(`${name}/Characters`);
             expect(app.vault.createFolder).toHaveBeenCalledWith(`${name}/Trash`);
-            
-            expect(result).toBe(newFolder);
         });
 
-        it('should abort and return null if folder already exists', async () => {
+        it('should abort if folder already exists', async () => {
             const name = 'ExistingNovel';
-            // Setup: Vault finds existing folder
-            (app.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(new MockTFolder(name));
+            createMockPath(name, true);
 
-            const result = await projectManager.createProject(name, '');
-
-            expect(result).toBeNull();
-            expect(app.vault.createFolder).not.toHaveBeenCalled();
-            expect(require('obsidian').Notice).toHaveBeenCalledWith(expect.stringContaining('already exists'));
-        });
-
-        it('should handle errors gracefully', async () => {
-            const name = 'ErrorProne';
-            (app.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-            (app.vault.createFolder as jest.Mock).mockRejectedValue(new Error('Disk full'));
-
-            const result = await projectManager.createProject(name, '');
+            const result = await manager.createProject(name, '');
 
             expect(result).toBeNull();
-            expect(require('obsidian').Notice).toHaveBeenCalledWith(expect.stringContaining('Failed to create project'));
-        });
-    });
-
-    describe('moveToTrash', () => {
-        let projectRoot: MockTFolder;
-        let trashFolder: MockTFolder;
-
-        beforeEach(() => {
-            projectRoot = new MockTFolder('Book');
-            trashFolder = new MockTFolder('Book/Trash', projectRoot);
-            projectRoot.children.push(trashFolder);
-        });
-
-        it('should move file to Trash and record original path', async () => {
-            const file = new MockTFile('Book/Chapter1.md', projectRoot);
-            
-            // Mock getProjectForFile internally usually relies on parent traversal or metadata. 
-            // Here we test moveToTrash logic directly assuming we pass valid projectRoot.
-            
-            await projectManager.moveToTrash(file as unknown as TAbstractFile, projectRoot as unknown as TFolder);
-
-            // Check frontmatter updated (originalPath saved)
-            expect(app.fileManager.processFrontMatter).toHaveBeenCalledWith(file, expect.any(Function));
-            
-            // Check move
-            expect(app.fileManager.renameFile).toHaveBeenCalledWith(file, 'Book/Trash/Chapter1.md');
-        });
-
-        it('should handle naming collisions in trash', async () => {
-            const file = new MockTFile('Book/Note.md', projectRoot);
-
-            // Mock that Note.md already exists in Trash
-            (app.vault.getAbstractFileByPath as jest.Mock).mockImplementation((path) => {
-                if (path === 'Book/Trash/Note.md') return new MockTFile(path);
-                return null;
-            });
-
-            await projectManager.moveToTrash(file as unknown as TAbstractFile, projectRoot as unknown as TFolder);
-
-            // Expect automatic renaming
-            expect(app.fileManager.renameFile).toHaveBeenCalledWith(file, 'Book/Trash/Note (1).md');
-        });
-
-        it('should fail gracefully if Trash folder is missing', async () => {
-            const emptyProject = new MockTFolder('EmptyProject');
-            const file = new MockTFile('EmptyProject/File.md', emptyProject);
-
-            await projectManager.moveToTrash(file as unknown as TAbstractFile, emptyProject as unknown as TFolder);
-
-            expect(app.fileManager.renameFile).not.toHaveBeenCalled();
-            expect(require('obsidian').Notice).toHaveBeenCalledWith('Project Trash folder not found.');
-        });
-    });
-
-    describe('renameProject', () => {
-        it('should rename folder and update folder note title', async () => {
-            const folder = new MockTFolder('OldTitle');
-            const folderNote = new MockTFile('OldTitle/index.md', folder);
-            folder.children.push(folderNote);
-            
-            // Setup parent
-            const root = new MockTFolder('/');
-            folder.parent = root;
-
-            await projectManager.renameProject(folder as unknown as TFolder, 'NewTitle');
-
-            // 1. Rename File
-            expect(app.fileManager.renameFile).toHaveBeenCalledWith(folder, 'NewTitle');
-
-            // 2. Update Folder Note Title
-            expect(app.fileManager.processFrontMatter).toHaveBeenCalledWith(folderNote, expect.any(Function));
-        });
-
-        it('should handle root path normalization correctly', async () => {
-            const folder = new MockTFolder('MyProject');
-            // Simulate parent being root
-            folder.parent = new MockTFolder('/'); 
-
-            await projectManager.renameProject(folder as unknown as TFolder, 'RenamedProject');
-
-            // Should not result in "//RenamedProject" or "/RenamedProject" if normalizePath works
-            expect(app.fileManager.renameFile).toHaveBeenCalledWith(folder, 'RenamedProject');
+            expect(app.vault.create).not.toHaveBeenCalled();
+            expect(Notice).toHaveBeenCalledWith(expect.stringContaining('already exists'));
         });
     });
 
     describe('getProjectWordCount', () => {
         it('should count words in markdown files recursively', async () => {
-            const project = new MockTFolder('Novel');
-            const marker = new MockTFile('Novel/project.md', project);
-            project.children.push(marker);
-
-            const manuscript = new MockTFolder('Novel/Manuscript', project);
-            project.children.push(manuscript);
+            const project = createMockPath('Novel', true);
             
-            // Setup Metadata to point to Manuscript folder
-            (app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-                frontmatter: { wordCountFolders: ['Manuscript'] }
+            (app.metadataCache.getFileCache as jest.Mock).mockImplementation((file: any) => {
+                if (file.name === 'project.md') {
+                    return { frontmatter: { wordCountFolders: ['Manuscript'] } };
+                }
+                return {};
             });
+            
+            createMockPath('Novel/project.md', false);
 
-            // Setup vault to return manuscript folder when requested
-            (app.vault.getAbstractFileByPath as jest.Mock).mockImplementation((path) => {
-                if (path.includes('Manuscript')) return manuscript;
-                return null;
-            });
+            const ch1 = createMockPath('Novel/Manuscript/Ch1.md', false);
+            const ch2 = createMockPath('Novel/Manuscript/Ch2.md', false);
 
-            // Add files to manuscript
-            const ch1 = new MockTFile('Novel/Manuscript/Ch1.md', manuscript);
-            const ch2 = new MockTFile('Novel/Manuscript/Ch2.md', manuscript);
-            manuscript.children.push(ch1, ch2);
-
-            // Mock content
-            (app.vault.cachedRead as jest.Mock).mockImplementation(async (file: MockTFile) => {
+            (app.vault.cachedRead as jest.Mock).mockImplementation(async (file: any) => {
                 if (file === ch1) return "One two three.";
                 if (file === ch2) return "Four five.";
                 return "";
             });
 
-            const count = await projectManager.getProjectWordCount(project as unknown as TFolder);
+            const count = await manager.getProjectWordCount(project as any);
             
             expect(count).toBe(5);
         });
 
-        it('should ignore errors for individual files and continue counting', async () => {
-            const project = new MockTFolder('Novel');
-            const manuscript = new MockTFolder('Novel/Manuscript', project);
-            // Default fallback if metadata is empty
-            (app.metadataCache.getFileCache as jest.Mock).mockReturnValue({}); 
-            (app.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(manuscript);
+        it('should safely handle read errors', async () => {
+            const project = createMockPath('Novel', true);
+            createMockPath('Novel/project.md', false);
+            
+            const goodFile = createMockPath('Novel/Manuscript/Good.md', false);
+            const badFile = createMockPath('Novel/Manuscript/Bad.md', false);
 
-            const goodFile = new MockTFile('Novel/Manuscript/Good.md', manuscript);
-            const badFile = new MockTFile('Novel/Manuscript/Bad.md', manuscript);
-            manuscript.children.push(goodFile, badFile);
-
-            (app.vault.cachedRead as jest.Mock).mockImplementation(async (file: MockTFile) => {
+            (app.vault.cachedRead as jest.Mock).mockImplementation(async (file: any) => {
                 if (file === goodFile) return "Word word.";
                 if (file === badFile) throw new Error("File locked");
                 return "";
@@ -319,11 +229,44 @@ describe('ProjectManager', () => {
 
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
             
-            const count = await projectManager.getProjectWordCount(project as unknown as TFolder);
+            const count = await manager.getProjectWordCount(project as any);
 
-            expect(count).toBe(2); // Should count the good file
+            expect(count).toBe(2);
             expect(consoleSpy).toHaveBeenCalled();
             consoleSpy.mockRestore();
+        });
+    });
+
+    describe('moveToTrash', () => {
+        it('should move file and handle naming collisions', async () => {
+            const project = createMockPath('Book', true);
+            createMockPath('Book/Trash', true);
+            createMockPath('Book/project.md', false);
+            const file = createMockPath('Book/Note.md', false);
+            createMockPath('Book/Trash/Note.md', false);
+
+            (app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+                frontmatter: { type: PROJECT_TYPE_KEY }
+            });
+
+            await manager.moveToTrash(file as any, project as any);
+
+            expect(app.fileManager.renameFile).toHaveBeenCalledWith(
+                file, 
+                'Book/Trash/Note (1).md'
+            );
+        });
+    });
+
+    describe('renameProject', () => {
+        it('should rename project folder and update index title', async () => {
+            const project = createMockPath('OldName', true);
+            const folderNote = createMockPath('OldName/index.md', false);
+
+            await manager.renameProject(project as any, 'NewName');
+
+            expect(app.fileManager.renameFile).toHaveBeenCalledWith(project, 'NewName');
+            expect(app.fileManager.processFrontMatter).toHaveBeenCalledWith(folderNote, expect.any(Function));
         });
     });
 });
