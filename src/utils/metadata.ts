@@ -1,4 +1,4 @@
-import { TFile, App } from 'obsidian';
+import { TFile, App, getFrontMatterInfo } from 'obsidian';
 
 export interface NovelistMetadata {
     synopsis: string;
@@ -26,7 +26,6 @@ export function getMetadata(app: App, file: TFile): NovelistMetadata {
         icon: fm.icon || "file-text",
         accentColor: fm.accentColor || "",
         notes: fm.notes || "",
-        // Preserve optional fields if they exist
         targetWordCount: fm.targetWordCount,
         targetSessionCount: fm.targetSessionCount,
         targetDeadline: fm.targetDeadline,
@@ -40,19 +39,9 @@ export function getRank(app: App, file: TFile): number {
     return typeof cache?.frontmatter?.rank === 'number' ? cache.frontmatter.rank : 999999;
 }
 
-/**
- * Safely updates the metadata for a file using Obsidian's atomic frontmatter API.
- * This ensures that the body of the note is never modified or deleted during updates.
- * 
- * @param app - The Obsidian App instance
- * @param file - The file to update
- * @param changes - An object containing only the fields to be updated
- */
 export async function updateMetadata(app: App, file: TFile, changes: Partial<NovelistMetadata>): Promise<void> {
     await app.fileManager.processFrontMatter(file, (frontmatter) => {
         for (const [key, value] of Object.entries(changes)) {
-            // Explicitly check for undefined to allow clearing values with null/empty string if intended,
-            // but ignore fields not present in the changes object.
             if (value !== undefined) {
                 frontmatter[key] = value;
             }
@@ -62,24 +51,33 @@ export async function updateMetadata(app: App, file: TFile, changes: Partial<Nov
 
 /**
  * Safely updates the body of a note while preserving its CURRENT frontmatter.
- * This prevents overwriting metadata changes (like Status/Rank) that happened
- * while the body was being edited.
+ * Uses vault.process for atomic updates to avoid race conditions.
+ * 
+ * @param app - The Obsidian App instance
+ * @param file - The file to update
+ * @param newBody - The new body content (should NOT contain frontmatter)
  */
 export async function updateNoteBody(app: App, file: TFile, newBody: string): Promise<void> {
-    const currentContent = await app.vault.read(file);
-    const cache = app.metadataCache.getFileCache(file);
-
-    let finalContent = newBody;
-
-    if (cache?.frontmatterPosition) {
-        // Extract the exact frontmatter block from the current live file
-        const fmEnd = cache.frontmatterPosition.end.offset;
-        const currentFrontmatter = currentContent.substring(0, fmEnd + 1);
+    await app.vault.process(file, (data) => {
+        // --- FIXED: Use getFrontMatterInfo instead of Regex ---
+        const info = getFrontMatterInfo(data);
         
-        // Combine current frontmatter with the new body
-        // Ensure a newline separates them if the body doesn't start with one
-        finalContent = `${currentFrontmatter}\n${newBody.startsWith('\n') ? newBody.substring(1) : newBody}`;
-    }
+        // 1. Extract existing frontmatter (including the fence and trailing newline)
+        // info.contentStart is the index where the actual body begins.
+        const existingFrontmatter = info.exists ? data.slice(0, info.contentStart) : '';
 
-    await app.vault.modify(file, finalContent);
+        // 2. Clean up the new body (remove leading whitespace to prevent huge gaps)
+        const cleanBody = newBody.trim();
+
+        // 3. Combine
+        if (existingFrontmatter) {
+            // Ensure we don't accidentally lose the newline separator if the slice didn't catch it
+            // (though contentStart usually accounts for it).
+            // To be safe, we check if it ends in whitespace.
+            const separator = existingFrontmatter.match(/\s$/) ? '' : '\n';
+            return `${existingFrontmatter}${separator}${cleanBody}`;
+        } else {
+            return cleanBody;
+        }
+    });
 }
