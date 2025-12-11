@@ -1,7 +1,8 @@
-import { App, TFile, TAbstractFile, normalizePath, Notice } from 'obsidian';
+import { App, TFile, TAbstractFile, normalizePath, Notice, getFrontMatterInfo } from 'obsidian';
 import { Logger } from './logger';
 import { PruningSettings } from '../settings';
 import NovelistPlugin from '../main';
+import { updateNoteBody } from 'src/utils/metadata';
 
 export interface Snapshot {
     path: string;         // Full path to the snapshot file
@@ -16,13 +17,12 @@ export class SnapshotManager {
     private app: App;
     private logger: Logger;
     private getSettings: () => { enabled: boolean, rules: PruningSettings };
-    
+
     public static readonly SNAPSHOT_DIR = '.novelist/snapshots';
 
     constructor(app: App, plugin: NovelistPlugin, settingsGetter: () => { enabled: boolean, rules: PruningSettings }) {
         this.app = app;
-        // FIX 1: Use the logger from the plugin instance
-        this.logger = plugin.logger; 
+        this.logger = plugin.logger;
         this.getSettings = settingsGetter;
     }
 
@@ -34,10 +34,8 @@ export class SnapshotManager {
 
     async createSnapshot(file: TFile, note?: string): Promise<void> {
         this.logger.log(`Creating snapshot for: ${file.path}`);
-        
         try {
             const snapshotDir = this.getSnapshotDirForFile(file);
-            
             if (!await this.app.vault.adapter.exists(SnapshotManager.SNAPSHOT_DIR)) {
                 await this.app.vault.adapter.mkdir(SnapshotManager.SNAPSHOT_DIR);
             }
@@ -46,15 +44,14 @@ export class SnapshotManager {
             }
 
             const fileContent = await this.app.vault.read(file);
-            
             const timestamp = (window as any).moment().valueOf();
-            
-            // FIX: Calculate word count only on the body of the note, excluding frontmatter.
-            const contentBody = fileContent.replace(/^---\n[\s\S]*?\n---\n/, '');
+
+            // Calculate word count on body only
+            const info = getFrontMatterInfo(fileContent);
+            const contentBody = fileContent.slice(info.contentStart);
             const wordCount = (contentBody.match(/\S+/g) || []).length;
 
             const safeNote = note ? note.replace(/"/g, '\\"') : '';
-
             const frontmatter = {
                 originalPath: file.path,
                 timestamp,
@@ -62,21 +59,20 @@ export class SnapshotManager {
                 snapshotWordCount: wordCount,
                 isPinned: false,
             };
-            
+
             const snapshotContent = `---\n${JSON.stringify(frontmatter, null, 2)}\n---
 ${fileContent}`;
-            
+
             const snapshotFilename = `${(window as any).moment(timestamp).format('YYYY-MM-DD-HHmmss')}.md`;
             const snapshotPath = normalizePath(`${snapshotDir}/${snapshotFilename}`);
 
             await this.app.vault.adapter.write(snapshotPath, snapshotContent);
             this.logger.log(`Snapshot created at: ${snapshotPath}`);
-            
+
             const settings = this.getSettings();
             if (settings.enabled) {
                 await this.pruneSnapshots(file, settings.rules);
             }
-
         } catch (e) {
             this.logger.error(`Failed to create snapshot for ${file.path}`, e);
             throw e;
@@ -107,7 +103,7 @@ ${fileContent}`;
                         path: path,
                         originalPath: origPathMatch ? origPathMatch[1] : file.path,
                         timestamp: parseInt(timestampMatch[1]),
-                        note: noteMatch ? noteMatch[1] : '', 
+                        note: noteMatch ? noteMatch[1] : '',
                         wordCount: wordCountMatch ? parseInt(wordCountMatch[1]) : 0,
                         isPinned: isPinnedMatch ? (isPinnedMatch[1] === 'true') : false,
                     });
@@ -119,10 +115,10 @@ ${fileContent}`;
 
         return snapshots.sort((a, b) => b.timestamp - a.timestamp);
     }
-    
+
     async updateSnapshotMetadata(snapshot: Snapshot, data: { isPinned?: boolean }) {
+        // ... (this method remains unchanged, but included for completeness) ...
         this.logger.log(`Updating metadata for snapshot: ${snapshot.path}`);
-        
         try {
             const rawContent = await this.app.vault.adapter.read(snapshot.path);
             const parts = rawContent.split('\n---');
@@ -131,11 +127,9 @@ ${fileContent}`;
 
             let fm: any = {};
             try {
-                // Attempt to parse existing frontmatter as JSON
                 fm = JSON.parse(fmBlock);
             } catch (e) {
                 this.logger.error("Failed to parse snapshot frontmatter as JSON.", e);
-                // If parsing fails, create a base object to avoid crashing
                 fm = { originalPath: snapshot.originalPath, timestamp: snapshot.timestamp };
             }
 
@@ -144,11 +138,10 @@ ${fileContent}`;
             }
 
             const newFrontmatterBlock = `---\n${JSON.stringify(fm, null, 2)}\n---`;
-            const newContent = newFrontmatterBlock + (contentBody ? `\n\n${contentBody}` : ''); 
+            const newContent = newFrontmatterBlock + (contentBody ? `\n\n${contentBody}` : '');
 
             await this.app.vault.adapter.write(snapshot.path, newContent);
             this.logger.log(`Snapshot metadata updated.`);
-
         } catch (e) {
             this.logger.error(`Failed to update snapshot metadata for ${snapshot.path}`, e);
             throw e;
@@ -161,8 +154,22 @@ ${fileContent}`;
         try {
             await this.createSnapshot(fileToRestore, 'Pre-Restore Auto-Backup');
             const snapContent = await this.app.vault.adapter.read(snapshot.path);
-            const contentToRestore = snapContent.replace(/^---\n[\s\S]*?\n---\n\n?/, '');
-            await this.app.vault.modify(fileToRestore, contentToRestore);
+
+            // --- FIX START ---
+            
+            // 1. Strip the Snapshot Container Metadata (JSON)
+            const snapInfo = getFrontMatterInfo(snapContent);
+            const originalFileContent = snapContent.slice(snapInfo.contentStart);
+
+            // 2. Strip the Original Note Frontmatter (YAML)
+            // We do this because the snapshot contains the ENTIRE original file.
+            // We want to restore only the body, keeping the LIVE note's current metadata.
+            const noteInfo = getFrontMatterInfo(originalFileContent);
+            const bodyOnly = originalFileContent.slice(noteInfo.contentStart);
+
+            // --- FIX END ---
+
+            await updateNoteBody(this.app, fileToRestore, bodyOnly);
             this.logger.log(`Restoration complete.`);
         } catch (e) {
             this.logger.error("Failed to restore snapshot", e);
@@ -178,7 +185,6 @@ ${fileContent}`;
 
     async handleFileRename(file: TAbstractFile, oldPath: string): Promise<void> {
         if (!(file instanceof TFile)) return;
-
         const oldSnapshotDir = this.getSnapshotDirForFile(oldPath);
         const newSnapshotDir = this.getSnapshotDirForFile(file);
 
@@ -192,9 +198,10 @@ ${fileContent}`;
     }
 
     async pruneSnapshots(file: TFile, rules: PruningSettings): Promise<number> {
+        // ... (pruneSnapshots remains unchanged) ...
         this.logger.log(`Pruning snapshots for ${file.basename}`);
         const allSnapshots = await this.getSnapshots(file);
-        
+
         if (allSnapshots.length === 0) {
             this.logger.log("Pruning: No snapshots found to prune.");
             return 0;
@@ -209,12 +216,9 @@ ${fileContent}`;
 
         const moment = (window as any).moment;
         const now = moment();
-        
         const toDelete: Snapshot[] = [];
         const keptDaily = new Set<string>();
         const keptWeekly = new Set<string>();
-        // FIX 2: Remove unused variable
-        // const keptMonthly = new Set<string>();
 
         const dailyLimit = now.clone().subtract(rules.keepDaily, 'days');
         const weeklyLimit = now.clone().subtract(rules.keepWeekly, 'weeks');
@@ -222,10 +226,11 @@ ${fileContent}`;
 
         for (const snap of unpinnedSnapshots) {
             const snapTime = moment(snap.timestamp);
-            
+
             if (snapTime.isAfter(dailyLimit)) {
                 continue;
             }
+
             if (snapTime.isAfter(weeklyLimit)) {
                 const dayKey = snapTime.format('YYYY-MM-DD');
                 if (!keptDaily.has(dayKey)) {
@@ -235,6 +240,7 @@ ${fileContent}`;
                 }
                 continue;
             }
+
             if (snapTime.isAfter(monthlyLimit)) {
                 const weekKey = snapTime.format('YYYY-WW');
                 if (!keptWeekly.has(weekKey)) {
@@ -244,6 +250,7 @@ ${fileContent}`;
                 }
                 continue;
             }
+
             toDelete.push(snap);
         }
 
@@ -255,7 +262,7 @@ ${fileContent}`;
         } else {
             this.logger.log("Pruning: No snapshots met the criteria for deletion.");
         }
-        
+
         return toDelete.length;
     }
 }
