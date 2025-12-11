@@ -1,4 +1,4 @@
-import { TFile, App } from 'obsidian';
+import { TFile, App, getFrontMatterInfo } from 'obsidian';
 
 export interface NovelistMetadata {
     synopsis: string;
@@ -59,27 +59,24 @@ export async function updateMetadata(app: App, file: TFile, changes: Partial<Nov
  */
 export async function updateNoteBody(app: App, file: TFile, newBody: string): Promise<void> {
     await app.vault.process(file, (data) => {
-        // ROBUST REGEX:
-        // 1. (?:\ufeff)? matches optional Byte Order Mark
-        // 2. \s* matches optional leading whitespace
-        // 3. --- matches the start fence
-        // 4. [\r\n]+ matches the newline(s)
-        // 5. ([\s\S]*?) captures the content
-        // 6. [\r\n]+ matches the newline(s) before end fence
-        // 7. --- matches end fence
-        // 8. \s* matches trailing spaces/newline
-        const fmRegex = /^(?:\ufeff)?\s*---\s*[\r\n]+([\s\S]*?)[\r\n]+---\s*[\r\n]*/;
+        // --- FIXED: Use getFrontMatterInfo instead of Regex ---
+        const info = getFrontMatterInfo(data);
         
-        const match = data.match(fmRegex);
-        
-        // Strip any leading whitespace/newlines from the new body to prevent gaps
-        const cleanBody = newBody.replace(/^\s+/, '');
+        // 1. Extract existing frontmatter (including the fence and trailing newline)
+        // info.contentStart is the index where the actual body begins.
+        const existingFrontmatter = info.exists ? data.slice(0, info.contentStart) : '';
 
-        if (match) {
-            const currentFrontmatter = match[0].trim(); // Keep the fence and content
-            return `${currentFrontmatter}\n${cleanBody}`;
+        // 2. Clean up the new body (remove leading whitespace to prevent huge gaps)
+        const cleanBody = newBody.trim();
+
+        // 3. Combine
+        if (existingFrontmatter) {
+            // Ensure we don't accidentally lose the newline separator if the slice didn't catch it
+            // (though contentStart usually accounts for it).
+            // To be safe, we check if it ends in whitespace.
+            const separator = existingFrontmatter.match(/\s$/) ? '' : '\n';
+            return `${existingFrontmatter}${separator}${cleanBody}`;
         } else {
-            // If no frontmatter exists in the live file, just return the new body
             return cleanBody;
         }
     });
